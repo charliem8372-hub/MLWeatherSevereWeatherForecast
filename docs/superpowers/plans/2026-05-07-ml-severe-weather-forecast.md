@@ -1,14 +1,14 @@
-# Nadocast-style Severe-Weather ML Forecaster — Implementation Plan
+# ML Severe-Weather Forecaster — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build a research-quality reproduction of Nadocast — probabilistic 24-hour CONUS severe-weather forecasts (tornado, hail, wind) using XGBoost on HRRR forecast fields, verified against SPC storm reports.
+**Goal:** Build a research-quality severe-weather ML forecaster following Nadocast's methodology — probabilistic 24-hour CONUS severe-weather forecasts (tornado, hail, wind) using XGBoost on HRRR forecast fields, verified against SPC storm reports.
 
-**Architecture:** Single Python package `nadocast_clone` with a typer CLI. Six idempotent pipeline stages (`download → extract → label → train → verify → plot`) communicate via Parquet on disk. No workflow framework. Notebooks for analysis only.
+**Architecture:** Single Python package `ml_severe_weather_forecast` with a typer CLI. Six idempotent pipeline stages (`download → extract → label → train → verify → plot`) communicate via Parquet on disk. No workflow framework. Notebooks for analysis only.
 
 **Tech Stack:** Python 3.12+, `uv` for packaging, `herbie-data` + `cfgrib` for HRRR ingest, `xarray` + `numpy` for gridded math, `pyproj` + `cartopy` for projections, `scikit-learn` for BallTree/IsotonicRegression, `xgboost` (CUDA) for modeling, `matplotlib` for figures, `pytest` for tests, `structlog` for logging, `ruff` + `mypy` + `pre-commit` for hygiene.
 
-**Spec:** `docs/superpowers/specs/2026-05-07-nadocast-clone-design.md`
+**Spec:** `docs/superpowers/specs/2026-05-07-ml-severe-weather-forecast-design.md`
 
 **Scope note:** This plan implements the spec end-to-end as one coherent project. Phases are sequential because each depends on the previous (no truly independent subsystems). Tasks within a phase are small, testable, and committed individually.
 
@@ -45,16 +45,16 @@
 cd C:\Users\charl\OneDrive\Documents\ClaudeCode
 git init
 echo "3.12" > .python-version
-uv init --package --name nadocast-clone --python 3.12
+uv init --package --name ml-severe-weather-forecast --python 3.12
 ```
 
 - [ ] **Step 2: Replace generated `pyproject.toml` with the project's**
 
 ```toml
 [project]
-name = "nadocast-clone"
+name = "ml-severe-weather-forecast"
 version = "0.1.0"
-description = "Nadocast-style severe-weather ML forecaster"
+description = "ML severe-weather forecaster (CONUS, XGBoost on HRRR)"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -85,7 +85,7 @@ dependencies = [
 ]
 
 [project.scripts]
-nadocast = "nadocast_clone.cli:app"
+mlswf = "ml_severe_weather_forecast.cli:app"
 
 [dependency-groups]
 dev = [
@@ -104,7 +104,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/nadocast_clone"]
+packages = ["src/ml_severe_weather_forecast"]
 
 [tool.ruff]
 line-length = 100
@@ -117,7 +117,7 @@ ignore = ["E501"]
 [tool.mypy]
 python_version = "3.12"
 strict = true
-files = ["src/nadocast_clone"]
+files = ["src/ml_severe_weather_forecast"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
@@ -180,12 +180,12 @@ git commit -m "chore: initialize uv project with dependencies"
 ### Task 2: Create source skeleton with stub modules
 
 **Files:**
-- Create: `src/nadocast_clone/__init__.py`
-- Create: `src/nadocast_clone/cli.py`
-- Create: `src/nadocast_clone/config.py`
-- Create: `src/nadocast_clone/logging.py`
-- Create: `src/nadocast_clone/data/__init__.py`
-- Create: `src/nadocast_clone/features/__init__.py`
+- Create: `src/ml_severe_weather_forecast/__init__.py`
+- Create: `src/ml_severe_weather_forecast/cli.py`
+- Create: `src/ml_severe_weather_forecast/config.py`
+- Create: `src/ml_severe_weather_forecast/logging.py`
+- Create: `src/ml_severe_weather_forecast/data/__init__.py`
+- Create: `src/ml_severe_weather_forecast/features/__init__.py`
 - Create: `data/.gitkeep`
 - Create: `tests/__init__.py`
 - Test: `tests/test_smoke.py`
@@ -196,14 +196,14 @@ git commit -m "chore: initialize uv project with dependencies"
 # tests/test_smoke.py
 from typer.testing import CliRunner
 
-from nadocast_clone.cli import app
+from ml_severe_weather_forecast.cli import app
 
 
 def test_cli_help_runs() -> None:
     runner = CliRunner()
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    assert "nadocast" in result.stdout.lower()
+    assert "mlswf" in result.stdout.lower()
 ```
 
 - [ ] **Step 2: Run the test to verify it fails**
@@ -211,17 +211,17 @@ def test_cli_help_runs() -> None:
 ```bash
 uv run pytest tests/test_smoke.py -v
 ```
-Expected: FAIL — `ModuleNotFoundError: No module named 'nadocast_clone.cli'`.
+Expected: FAIL — `ModuleNotFoundError: No module named 'ml_severe_weather_forecast.cli'`.
 
-- [ ] **Step 3: Write `src/nadocast_clone/__init__.py`**
+- [ ] **Step 3: Write `src/ml_severe_weather_forecast/__init__.py`**
 
 ```python
-"""Nadocast-style severe-weather ML forecaster."""
+"""ML severe-weather forecaster (CONUS, XGBoost on HRRR)."""
 
 __version__ = "0.1.0"
 ```
 
-- [ ] **Step 4: Write `src/nadocast_clone/logging.py`**
+- [ ] **Step 4: Write `src/ml_severe_weather_forecast/logging.py`**
 
 ```python
 """Structured logging setup."""
@@ -253,7 +253,7 @@ def configure_logging(stage: str, log_dir: Path | None = None) -> structlog.Boun
     return log
 ```
 
-- [ ] **Step 5: Write `src/nadocast_clone/config.py`**
+- [ ] **Step 5: Write `src/ml_severe_weather_forecast/config.py`**
 
 ```python
 """Configuration via pydantic-settings."""
@@ -341,7 +341,7 @@ class Settings(BaseSettings):
 settings = Settings()
 ```
 
-- [ ] **Step 6: Write `src/nadocast_clone/cli.py` (stub commands)**
+- [ ] **Step 6: Write `src/ml_severe_weather_forecast/cli.py` (stub commands)**
 
 ```python
 """Typer CLI entry point. Subcommands are added in later tasks."""
@@ -350,15 +350,15 @@ from __future__ import annotations
 import typer
 
 app = typer.Typer(
-    name="nadocast",
-    help="Nadocast-style severe-weather ML forecaster.",
+    name="mlswf",
+    help="ML severe-weather forecaster (CONUS, XGBoost on HRRR).",
     no_args_is_help=True,
 )
 
 
 @app.callback()
 def _main() -> None:
-    """nadocast — historical-evaluation pipeline."""
+    """mlswf — historical-evaluation pipeline."""
 
 
 if __name__ == "__main__":
@@ -368,12 +368,12 @@ if __name__ == "__main__":
 - [ ] **Step 7: Create empty submodule packages and data directory placeholder**
 
 ```python
-# src/nadocast_clone/data/__init__.py
+# src/ml_severe_weather_forecast/data/__init__.py
 """Data acquisition modules (HRRR, reports, outlooks, grid)."""
 ```
 
 ```python
-# src/nadocast_clone/features/__init__.py
+# src/ml_severe_weather_forecast/features/__init__.py
 """Feature engineering modules."""
 ```
 
@@ -482,7 +482,7 @@ jobs:
       - name: Type check
         run: uv run mypy src/
       - name: Test
-        run: uv run pytest tests/ -v --cov=src/nadocast_clone --cov-report=term-missing
+        run: uv run pytest tests/ -v --cov=src/ml_severe_weather_forecast --cov-report=term-missing
 ```
 
 - [ ] **Step 2: Commit**
@@ -502,17 +502,17 @@ git commit -m "ci: add GitHub Actions test workflow"
 - [ ] **Step 1: Write a README that documents the project at a high level and references the spec**
 
 ```markdown
-# nadocast-clone
+# ml-severe-weather-forecast
 
-A research-quality reproduction of [Nadocast](http://nadocast.com)'s methodology: probabilistic 24-hour CONUS severe-weather forecasts (tornado, hail, wind) using XGBoost on HRRR forecast fields, verified against SPC storm reports.
+ML-driven probabilistic 24-hour CONUS severe-weather forecasts (tornado, hail, wind), using XGBoost on HRRR forecast fields and verified against SPC storm reports. Methodology inspired by [Nadocast](https://nadocast.com).
 
-**Status:** in development. See `docs/superpowers/specs/2026-05-07-nadocast-clone-design.md` for the full spec.
+**Status:** in development. See `docs/superpowers/specs/2026-05-07-ml-severe-weather-forecast-design.md` for the full spec.
 
 ## Quick start
 
 ```bash
 uv sync
-uv run nadocast --help
+uv run mlswf --help
 ```
 
 ## Pipeline
@@ -526,9 +526,9 @@ Each stage is idempotent; data flows via Parquet under `data/`.
 ## Reproducing the verification report
 
 ```bash
-uv run nadocast download hrrr        --start 2022-04-01 --end 2024-07-31
-uv run nadocast download reports     --start 2010 --end 2024
-uv run nadocast download spc-outlooks --start 2022 --end 2024
+uv run mlswf download hrrr        --start 2022-04-01 --end 2024-07-31
+uv run mlswf download reports     --start 2010 --end 2024
+uv run mlswf download spc-outlooks --start 2022 --end 2024
 uv run python scripts/01_extract_all.py
 uv run python scripts/02_train_all.py
 uv run python scripts/03_verify_all.py
@@ -546,7 +546,7 @@ If `uv sync` fails on `cfgrib`/`eccodes` (typically Windows-specific), use:
 
 ```bash
 conda env create -f environment.yml
-conda activate nadocast-clone
+conda activate ml-severe-weather-forecast
 pip install -e .
 ```
 ```
@@ -584,7 +584,7 @@ The grid is the spatial backbone for everything: cell IDs are foreign keys joini
 ### Task 7: Lambert Conformal grid module — projection setup
 
 **Files:**
-- Create: `src/nadocast_clone/data/grid.py`
+- Create: `src/ml_severe_weather_forecast/data/grid.py`
 - Test: `tests/test_grid.py`
 
 - [ ] **Step 1: Write a failing test for grid construction**
@@ -593,8 +593,8 @@ The grid is the spatial backbone for everything: cell IDs are foreign keys joini
 # tests/test_grid.py
 import numpy as np
 
-from nadocast_clone.config import settings
-from nadocast_clone.data.grid import Grid, build_grid
+from ml_severe_weather_forecast.config import settings
+from ml_severe_weather_forecast.data.grid import Grid, build_grid
 
 
 def test_build_grid_has_expected_cell_count() -> None:
@@ -619,7 +619,7 @@ def test_grid_centers_are_lat_lon() -> None:
 ```bash
 uv run pytest tests/test_grid.py -v
 ```
-Expected: FAIL — `ImportError: cannot import name 'Grid' from 'nadocast_clone.data.grid'`.
+Expected: FAIL — `ImportError: cannot import name 'Grid' from 'ml_severe_weather_forecast.data.grid'`.
 
 - [ ] **Step 3: Implement `grid.py`**
 
@@ -633,7 +633,7 @@ from functools import cached_property
 import numpy as np
 from pyproj import CRS, Transformer
 
-from nadocast_clone.config import settings
+from ml_severe_weather_forecast.config import settings
 
 
 def _lcc_crs() -> CRS:
@@ -734,7 +734,7 @@ Expected: 3 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/data/grid.py tests/test_grid.py
+git add src/ml_severe_weather_forecast/data/grid.py tests/test_grid.py
 git commit -m "feat(grid): build 50km Lambert Conformal CONUS grid"
 ```
 
@@ -743,7 +743,7 @@ git commit -m "feat(grid): build 50km Lambert Conformal CONUS grid"
 ### Task 8: Grid — point-to-cell lookup and roundtrip
 
 **Files:**
-- Modify: `src/nadocast_clone/data/grid.py`
+- Modify: `src/ml_severe_weather_forecast/data/grid.py`
 - Modify: `tests/test_grid.py`
 
 - [ ] **Step 1: Add tests for point lookup and roundtrip**
@@ -753,7 +753,7 @@ Append to `tests/test_grid.py`:
 ```python
 import pytest
 
-from nadocast_clone.data.grid import Grid, build_grid, latlon_to_cell_id
+from ml_severe_weather_forecast.data.grid import Grid, build_grid, latlon_to_cell_id
 
 
 def test_known_city_resolves_to_a_cell() -> None:
@@ -789,7 +789,7 @@ Expected: 3 new tests fail with `ImportError: cannot import name 'latlon_to_cell
 
 - [ ] **Step 3: Implement the lookup function**
 
-Append to `src/nadocast_clone/data/grid.py`:
+Append to `src/ml_severe_weather_forecast/data/grid.py`:
 
 ```python
 from pyproj import Transformer as _T  # noqa: E402
@@ -827,7 +827,7 @@ Expected: 6 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/data/grid.py tests/test_grid.py
+git add src/ml_severe_weather_forecast/data/grid.py tests/test_grid.py
 git commit -m "feat(grid): point-to-cell lookup with offshore handling"
 ```
 
@@ -836,7 +836,7 @@ git commit -m "feat(grid): point-to-cell lookup with offshore handling"
 ### Task 9: Grid persistence — save/load to Parquet
 
 **Files:**
-- Modify: `src/nadocast_clone/data/grid.py`
+- Modify: `src/ml_severe_weather_forecast/data/grid.py`
 - Modify: `tests/test_grid.py`
 
 - [ ] **Step 1: Add round-trip persistence test**
@@ -857,7 +857,7 @@ def test_grid_save_load_roundtrip(tmp_path) -> None:
 Add the imports at the top:
 
 ```python
-from nadocast_clone.data.grid import load_grid, save_grid
+from ml_severe_weather_forecast.data.grid import load_grid, save_grid
 ```
 
 - [ ] **Step 2: Run, expect failure**
@@ -869,7 +869,7 @@ Expected: FAIL on import.
 
 - [ ] **Step 3: Implement save/load**
 
-Append to `src/nadocast_clone/data/grid.py`:
+Append to `src/ml_severe_weather_forecast/data/grid.py`:
 
 ```python
 import pandas as pd  # noqa: E402
@@ -915,7 +915,7 @@ Expected: 7 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/data/grid.py tests/test_grid.py
+git add src/ml_severe_weather_forecast/data/grid.py tests/test_grid.py
 git commit -m "feat(grid): save/load grid to Parquet"
 ```
 
@@ -926,8 +926,8 @@ git commit -m "feat(grid): save/load grid to Parquet"
 ### Task 10: Storm-report download CLI
 
 **Files:**
-- Create: `src/nadocast_clone/data/reports.py`
-- Modify: `src/nadocast_clone/cli.py`
+- Create: `src/ml_severe_weather_forecast/data/reports.py`
+- Modify: `src/ml_severe_weather_forecast/cli.py`
 - Test: `tests/test_reports.py`
 - Test fixture: `tests/fixtures/sample_lsr.csv`
 
@@ -948,7 +948,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from nadocast_clone.data.reports import (
+from ml_severe_weather_forecast.data.reports import (
     apply_severity_filters,
     dedup_reports,
     parse_spc_csv,
@@ -990,7 +990,7 @@ from pathlib import Path
 import httpx
 import pandas as pd
 
-from nadocast_clone.config import settings
+from ml_severe_weather_forecast.config import settings
 
 SPC_BASE = "https://www.spc.noaa.gov/wcm"
 HAZARD_TO_FILE = {"tor": "{year}_torn.csv", "hail": "{year}_hail.csv", "wind": "{year}_wind.csv"}
@@ -1119,7 +1119,7 @@ Expected: 2 passed.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/nadocast_clone/data/reports.py tests/test_reports.py tests/fixtures/sample_lsr.csv
+git add src/ml_severe_weather_forecast/data/reports.py tests/test_reports.py tests/fixtures/sample_lsr.csv
 git commit -m "feat(reports): SPC storm-report parser, downloader, severity filter, dedup"
 ```
 
@@ -1202,11 +1202,11 @@ git commit -m "test(reports): cover severity filter and dedup edge cases"
 ### Task 12: Reports CLI subcommand
 
 **Files:**
-- Modify: `src/nadocast_clone/cli.py`
+- Modify: `src/ml_severe_weather_forecast/cli.py`
 
 - [ ] **Step 1: Add a typer-app group for `download` with a `reports` subcommand**
 
-Replace `src/nadocast_clone/cli.py` with:
+Replace `src/ml_severe_weather_forecast/cli.py` with:
 
 ```python
 """Typer CLI entry point."""
@@ -1216,11 +1216,11 @@ from pathlib import Path
 
 import typer
 
-from nadocast_clone.config import settings
+from ml_severe_weather_forecast.config import settings
 
 app = typer.Typer(
-    name="nadocast",
-    help="Nadocast-style severe-weather ML forecaster.",
+    name="mlswf",
+    help="ML severe-weather forecaster (CONUS, XGBoost on HRRR).",
     no_args_is_help=True,
 )
 download_app = typer.Typer(name="download", help="Data acquisition commands.", no_args_is_help=True)
@@ -1235,7 +1235,7 @@ def download_reports_cmd(
     force: bool = typer.Option(False, help="Re-download even if cached."),
 ) -> None:
     """Download SPC severe-weather DB CSVs for tornado/hail/wind."""
-    from nadocast_clone.data.reports import HAZARD_VALID, download_spc_year
+    from ml_severe_weather_forecast.data.reports import HAZARD_VALID, download_spc_year
 
     target_dir = dest or settings.reports_dir
     typer.echo(f"Downloading SPC reports {start}–{end} → {target_dir}")
@@ -1252,16 +1252,16 @@ if __name__ == "__main__":
 - [ ] **Step 2: Smoke-test the CLI**
 
 ```bash
-uv run nadocast download --help
-uv run nadocast download reports --help
+uv run mlswf download --help
+uv run mlswf download reports --help
 ```
 Expected: help text with `--start`, `--end`, `--dest`, `--force`.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/nadocast_clone/cli.py
-git commit -m "feat(cli): nadocast download reports subcommand"
+git add src/ml_severe_weather_forecast/cli.py
+git commit -m "feat(cli): mlswf download reports subcommand"
 ```
 
 ---
@@ -1269,8 +1269,8 @@ git commit -m "feat(cli): nadocast download reports subcommand"
 ### Task 13: Reports build pipeline (download → parse → filter → dedup → save)
 
 **Files:**
-- Modify: `src/nadocast_clone/data/reports.py`
-- Modify: `src/nadocast_clone/cli.py`
+- Modify: `src/ml_severe_weather_forecast/data/reports.py`
+- Modify: `src/ml_severe_weather_forecast/cli.py`
 - Test: `tests/test_reports.py`
 
 - [ ] **Step 1: Add a build_reports test that uses the fixture**
@@ -1293,7 +1293,7 @@ def test_build_reports_writes_combined_parquet(tmp_path: Path) -> None:
 Add the import at the top:
 
 ```python
-from nadocast_clone.data.reports import build_reports
+from ml_severe_weather_forecast.data.reports import build_reports
 ```
 
 - [ ] **Step 2: Run, expect failure**
@@ -1305,7 +1305,7 @@ Expected: FAIL on import.
 
 - [ ] **Step 3: Implement `build_reports`**
 
-Append to `src/nadocast_clone/data/reports.py`:
+Append to `src/ml_severe_weather_forecast/data/reports.py`:
 
 ```python
 def build_reports(
@@ -1337,10 +1337,10 @@ def build_reports(
 
 - [ ] **Step 4: Wire into the CLI — extend `download reports` to also build per-year Parquets**
 
-Modify `download_reports_cmd` in `src/nadocast_clone/cli.py` to call `build_reports` after the downloads. Replace its body with:
+Modify `download_reports_cmd` in `src/ml_severe_weather_forecast/cli.py` to call `build_reports` after the downloads. Replace its body with:
 
 ```python
-    from nadocast_clone.data.reports import HAZARD_VALID, build_reports, download_spc_year
+    from ml_severe_weather_forecast.data.reports import HAZARD_VALID, build_reports, download_spc_year
 
     target_dir = dest or settings.reports_dir
     typer.echo(f"Downloading SPC reports {start}–{end} → {target_dir}")
@@ -1364,7 +1364,7 @@ Expected: 6 passed.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add src/nadocast_clone/data/reports.py src/nadocast_clone/cli.py tests/test_reports.py
+git add src/ml_severe_weather_forecast/data/reports.py src/ml_severe_weather_forecast/cli.py tests/test_reports.py
 git commit -m "feat(reports): build_reports pipeline + CLI integration"
 ```
 
@@ -1375,7 +1375,7 @@ git commit -m "feat(reports): build_reports pipeline + CLI integration"
 ### Task 14: Spatiotemporal label join
 
 **Files:**
-- Create: `src/nadocast_clone/labels.py`
+- Create: `src/ml_severe_weather_forecast/labels.py`
 - Test: `tests/test_labels.py`
 
 - [ ] **Step 1: Write failing tests for label generation**
@@ -1387,8 +1387,8 @@ from datetime import UTC, datetime, timedelta
 import numpy as np
 import pandas as pd
 
-from nadocast_clone.data.grid import build_grid, latlon_to_cell_id
-from nadocast_clone.labels import label_cycle
+from ml_severe_weather_forecast.data.grid import build_grid, latlon_to_cell_id
+from ml_severe_weather_forecast.labels import label_cycle
 
 
 def _reports_df(rows: list[dict]) -> pd.DataFrame:
@@ -1486,7 +1486,7 @@ Expected: FAIL on import.
 - [ ] **Step 3: Implement label join**
 
 ```python
-# src/nadocast_clone/labels.py
+# src/ml_severe_weather_forecast/labels.py
 """Spatiotemporal join: SPC storm reports → grid cells → binary labels."""
 from __future__ import annotations
 
@@ -1496,8 +1496,8 @@ import numpy as np
 import pandas as pd
 from sklearn.neighbors import BallTree
 
-from nadocast_clone.config import settings
-from nadocast_clone.data.grid import Grid
+from ml_severe_weather_forecast.config import settings
+from ml_severe_weather_forecast.data.grid import Grid
 
 EARTH_RADIUS_M = 6_371_000.0
 
@@ -1567,7 +1567,7 @@ Expected: 4 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/labels.py tests/test_labels.py
+git add src/ml_severe_weather_forecast/labels.py tests/test_labels.py
 git commit -m "feat(labels): per-cycle BallTree spatiotemporal label join"
 ```
 
@@ -1576,7 +1576,7 @@ git commit -m "feat(labels): per-cycle BallTree spatiotemporal label join"
 ### Task 15: Year-level label aggregation
 
 **Files:**
-- Modify: `src/nadocast_clone/labels.py`
+- Modify: `src/ml_severe_weather_forecast/labels.py`
 - Modify: `tests/test_labels.py`
 
 - [ ] **Step 1: Add a year-level test**
@@ -1585,7 +1585,7 @@ Append to `tests/test_labels.py`:
 
 ```python
 def test_build_year_labels(tmp_path) -> None:
-    from nadocast_clone.labels import build_year_labels
+    from ml_severe_weather_forecast.labels import build_year_labels
 
     grid = build_grid()
     reports = _reports_df(
@@ -1621,7 +1621,7 @@ uv run pytest tests/test_labels.py::test_build_year_labels -v
 
 - [ ] **Step 3: Implement `build_year_labels`**
 
-Append to `src/nadocast_clone/labels.py`:
+Append to `src/ml_severe_weather_forecast/labels.py`:
 
 ```python
 from pathlib import Path  # noqa: E402
@@ -1662,7 +1662,7 @@ Expected: 5 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/labels.py tests/test_labels.py
+git add src/ml_severe_weather_forecast/labels.py tests/test_labels.py
 git commit -m "feat(labels): build_year_labels aggregator"
 ```
 
@@ -1671,11 +1671,11 @@ git commit -m "feat(labels): build_year_labels aggregator"
 ### Task 16: Labels CLI subcommand
 
 **Files:**
-- Modify: `src/nadocast_clone/cli.py`
+- Modify: `src/ml_severe_weather_forecast/cli.py`
 
-- [ ] **Step 1: Add the `nadocast label` command**
+- [ ] **Step 1: Add the `mlswf label` command**
 
-Append to `src/nadocast_clone/cli.py`:
+Append to `src/ml_severe_weather_forecast/cli.py`:
 
 ```python
 @app.command("label")
@@ -1685,13 +1685,13 @@ def label_cmd(
     """Generate per-cycle labels for a given year using cached reports."""
     from datetime import UTC, datetime, timedelta
 
-    from nadocast_clone.data.grid import build_grid
-    from nadocast_clone.labels import build_year_labels
+    from ml_severe_weather_forecast.data.grid import build_grid
+    from ml_severe_weather_forecast.labels import build_year_labels
 
     grid = build_grid()
     reports_path = settings.reports_dir / f"{year}.parquet"
     if not reports_path.exists():
-        raise typer.BadParameter(f"missing reports parquet: {reports_path}. Run `nadocast download reports` first.")
+        raise typer.BadParameter(f"missing reports parquet: {reports_path}. Run `mlswf download reports` first.")
 
     season_start = datetime(year, settings.season_month_start, 1, tzinfo=UTC)
     # Last day of season_month_end:
@@ -1713,15 +1713,15 @@ def label_cmd(
 - [ ] **Step 2: Smoke-test**
 
 ```bash
-uv run nadocast label --help
+uv run mlswf label --help
 ```
 Expected: help text with `--year`.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/nadocast_clone/cli.py
-git commit -m "feat(cli): nadocast label subcommand"
+git add src/ml_severe_weather_forecast/cli.py
+git commit -m "feat(cli): mlswf label subcommand"
 ```
 
 ---
@@ -1733,14 +1733,14 @@ The HRRR layer is the bulk of the data work: download GRIB2, extract a curated s
 ### Task 17: HRRR download via herbie
 
 **Files:**
-- Create: `src/nadocast_clone/data/hrrr.py`
+- Create: `src/ml_severe_weather_forecast/data/hrrr.py`
 - Test: `tests/test_hrrr.py`
 
 - [ ] **Step 1: Write a failing test for the variable specification**
 
 ```python
 # tests/test_hrrr.py
-from nadocast_clone.data.hrrr import HRRR_VARIABLES, hrrr_variable_search_string
+from ml_severe_weather_forecast.data.hrrr import HRRR_VARIABLES, hrrr_variable_search_string
 
 
 def test_hrrr_variable_list_complete() -> None:
@@ -1883,7 +1883,7 @@ Expected: 2 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/data/hrrr.py tests/test_hrrr.py
+git add src/ml_severe_weather_forecast/data/hrrr.py tests/test_hrrr.py
 git commit -m "feat(hrrr): variable spec and herbie-based downloader"
 ```
 
@@ -1892,7 +1892,7 @@ git commit -m "feat(hrrr): variable spec and herbie-based downloader"
 ### Task 18: GRIB2 → xarray extraction
 
 **Files:**
-- Modify: `src/nadocast_clone/data/hrrr.py`
+- Modify: `src/ml_severe_weather_forecast/data/hrrr.py`
 - Modify: `tests/test_hrrr.py`
 - Create test fixture: `tests/fixtures/build_tiny_hrrr.py` (one-time generator)
 
@@ -1916,7 +1916,7 @@ from pathlib import Path
 
 from herbie import Herbie
 
-from nadocast_clone.data.hrrr import hrrr_variable_search_string
+from ml_severe_weather_forecast.data.hrrr import hrrr_variable_search_string
 
 OUT = Path(__file__).parent / "tiny_hrrr.grib2"
 
@@ -1947,7 +1947,7 @@ from pathlib import Path
 import pytest
 import xarray as xr
 
-from nadocast_clone.data.hrrr import extract_variables_to_dataset
+from ml_severe_weather_forecast.data.hrrr import extract_variables_to_dataset
 
 FIXTURE = Path(__file__).parent / "fixtures" / "tiny_hrrr.grib2"
 
@@ -1964,7 +1964,7 @@ def test_extract_variables_returns_dataset() -> None:
 
 - [ ] **Step 3: Implement `extract_variables_to_dataset`**
 
-Append to `src/nadocast_clone/data/hrrr.py`:
+Append to `src/ml_severe_weather_forecast/data/hrrr.py`:
 
 ```python
 import cfgrib  # noqa: E402
@@ -2051,7 +2051,7 @@ Expected: 3 passed (with the fixture present); the extraction test is skipped if
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/data/hrrr.py tests/test_hrrr.py tests/fixtures/build_tiny_hrrr.py tests/fixtures/tiny_hrrr.grib2
+git add src/ml_severe_weather_forecast/data/hrrr.py tests/test_hrrr.py tests/fixtures/build_tiny_hrrr.py tests/fixtures/tiny_hrrr.grib2
 git commit -m "feat(hrrr): extract configured variables into xarray Dataset"
 ```
 
@@ -2060,7 +2060,7 @@ git commit -m "feat(hrrr): extract configured variables into xarray Dataset"
 ### Task 19: 3 km → 50 km regridding to grid cells
 
 **Files:**
-- Modify: `src/nadocast_clone/data/hrrr.py`
+- Modify: `src/ml_severe_weather_forecast/data/hrrr.py`
 - Modify: `tests/test_hrrr.py`
 
 - [ ] **Step 1: Write the regrid test**
@@ -2070,8 +2070,8 @@ Append to `tests/test_hrrr.py`:
 ```python
 @pytest.mark.skipif(not FIXTURE.exists(), reason="fixture missing")
 def test_regrid_to_50km_returns_dataframe_per_cell() -> None:
-    from nadocast_clone.data.grid import build_grid
-    from nadocast_clone.data.hrrr import extract_variables_to_dataset, regrid_to_cells
+    from ml_severe_weather_forecast.data.grid import build_grid
+    from ml_severe_weather_forecast.data.hrrr import extract_variables_to_dataset, regrid_to_cells
 
     ds = extract_variables_to_dataset(FIXTURE)
     grid = build_grid()
@@ -2093,13 +2093,13 @@ uv run pytest tests/test_hrrr.py::test_regrid_to_50km_returns_dataframe_per_cell
 
 - [ ] **Step 3: Implement regridding via nearest-neighbor cell assignment**
 
-Append to `src/nadocast_clone/data/hrrr.py`:
+Append to `src/ml_severe_weather_forecast/data/hrrr.py`:
 
 ```python
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from nadocast_clone.data.grid import Grid  # noqa: E402
+from ml_severe_weather_forecast.data.grid import Grid  # noqa: E402
 
 
 def _assign_hrrr_points_to_cells(ds: xr.Dataset, grid: Grid) -> np.ndarray:
@@ -2178,7 +2178,7 @@ Expected: all hrrr tests pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/data/hrrr.py tests/test_hrrr.py
+git add src/ml_severe_weather_forecast/data/hrrr.py tests/test_hrrr.py
 git commit -m "feat(hrrr): nearest-cell regrid 3km HRRR -> 50km grid"
 ```
 
@@ -2187,11 +2187,11 @@ git commit -m "feat(hrrr): nearest-cell regrid 3km HRRR -> 50km grid"
 ### Task 20: HRRR download CLI subcommand
 
 **Files:**
-- Modify: `src/nadocast_clone/cli.py`
+- Modify: `src/ml_severe_weather_forecast/cli.py`
 
-- [ ] **Step 1: Add `nadocast download hrrr`**
+- [ ] **Step 1: Add `mlswf download hrrr`**
 
-Append to `src/nadocast_clone/cli.py`:
+Append to `src/ml_severe_weather_forecast/cli.py`:
 
 ```python
 @download_app.command("hrrr")
@@ -2202,7 +2202,7 @@ def download_hrrr_cmd(
     """Download 12z HRRR cycles between start and end (inclusive)."""
     from datetime import UTC, datetime, timedelta
 
-    from nadocast_clone.data.hrrr import download_cycle
+    from ml_severe_weather_forecast.data.hrrr import download_cycle
 
     s = datetime.fromisoformat(start).replace(tzinfo=UTC, hour=settings.hrrr_cycle_hour)
     e = datetime.fromisoformat(end).replace(tzinfo=UTC, hour=settings.hrrr_cycle_hour)
@@ -2219,15 +2219,15 @@ def download_hrrr_cmd(
 - [ ] **Step 2: Smoke-test help**
 
 ```bash
-uv run nadocast download hrrr --help
+uv run mlswf download hrrr --help
 ```
 Expected: help text with `--start` and `--end`.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/nadocast_clone/cli.py
-git commit -m "feat(cli): nadocast download hrrr subcommand"
+git add src/ml_severe_weather_forecast/cli.py
+git commit -m "feat(cli): mlswf download hrrr subcommand"
 ```
 
 ---
@@ -2237,7 +2237,7 @@ git commit -m "feat(cli): nadocast download hrrr subcommand"
 ### Task 21: Temporal aggregation across forecast hours
 
 **Files:**
-- Create: `src/nadocast_clone/features/extract.py`
+- Create: `src/ml_severe_weather_forecast/features/extract.py`
 - Test: `tests/test_extract.py`
 
 - [ ] **Step 1: Write a test that takes per-forecast-hour DataFrames and aggregates them**
@@ -2247,7 +2247,7 @@ git commit -m "feat(cli): nadocast download hrrr subcommand"
 import numpy as np
 import pandas as pd
 
-from nadocast_clone.features.extract import temporal_aggregate
+from ml_severe_weather_forecast.features.extract import temporal_aggregate
 
 
 def test_temporal_aggregate_max_mean_p90() -> None:
@@ -2288,7 +2288,7 @@ uv run pytest tests/test_extract.py -v
 - [ ] **Step 3: Implement `temporal_aggregate`**
 
 ```python
-# src/nadocast_clone/features/extract.py
+# src/ml_severe_weather_forecast/features/extract.py
 """Per-cycle feature extraction: 25 forecast-hour DataFrames → one feature table."""
 from __future__ import annotations
 
@@ -2349,7 +2349,7 @@ Expected: 2 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/features/extract.py tests/test_extract.py
+git add src/ml_severe_weather_forecast/features/extract.py tests/test_extract.py
 git commit -m "feat(features): temporal aggregation across forecast hours"
 ```
 
@@ -2358,7 +2358,7 @@ git commit -m "feat(features): temporal aggregation across forecast hours"
 ### Task 22: Snapshot-anchor features (f06, f12, f18)
 
 **Files:**
-- Modify: `src/nadocast_clone/features/extract.py`
+- Modify: `src/ml_severe_weather_forecast/features/extract.py`
 - Modify: `tests/test_extract.py`
 
 - [ ] **Step 1: Add a snapshot test**
@@ -2367,7 +2367,7 @@ Append to `tests/test_extract.py`:
 
 ```python
 def test_snapshot_anchors_pull_specific_forecast_hours() -> None:
-    from nadocast_clone.features.extract import snapshot_anchors
+    from ml_severe_weather_forecast.features.extract import snapshot_anchors
 
     cells = ["c_001_001"]
     frames = []
@@ -2387,7 +2387,7 @@ uv run pytest tests/test_extract.py::test_snapshot_anchors_pull_specific_forecas
 
 - [ ] **Step 3: Implement `snapshot_anchors`**
 
-Append to `src/nadocast_clone/features/extract.py`:
+Append to `src/ml_severe_weather_forecast/features/extract.py`:
 
 ```python
 def snapshot_anchors(
@@ -2422,7 +2422,7 @@ Expected: 3 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/features/extract.py tests/test_extract.py
+git add src/ml_severe_weather_forecast/features/extract.py tests/test_extract.py
 git commit -m "feat(features): snapshot anchors at f06/f12/f18"
 ```
 
@@ -2431,7 +2431,7 @@ git commit -m "feat(features): snapshot anchors at f06/f12/f18"
 ### Task 23: Spatial neighborhood (concentric rings)
 
 **Files:**
-- Create: `src/nadocast_clone/features/neighborhood.py`
+- Create: `src/ml_severe_weather_forecast/features/neighborhood.py`
 - Test: `tests/test_neighborhood.py`
 
 - [ ] **Step 1: Write a test for ring features**
@@ -2441,8 +2441,8 @@ git commit -m "feat(features): snapshot anchors at f06/f12/f18"
 import numpy as np
 import pandas as pd
 
-from nadocast_clone.data.grid import build_grid
-from nadocast_clone.features.neighborhood import compute_ring_features
+from ml_severe_weather_forecast.data.grid import build_grid
+from ml_severe_weather_forecast.features.neighborhood import compute_ring_features
 
 
 def test_compute_ring_features_returns_per_cell_table() -> None:
@@ -2476,7 +2476,7 @@ def test_compute_ring_features_with_localized_signal() -> None:
 - [ ] **Step 3: Implement neighborhood rings**
 
 ```python
-# src/nadocast_clone/features/neighborhood.py
+# src/ml_severe_weather_forecast/features/neighborhood.py
 """Concentric-ring neighborhood feature engineering."""
 from __future__ import annotations
 
@@ -2486,7 +2486,7 @@ import numpy as np
 import pandas as pd
 from sklearn.neighbors import BallTree
 
-from nadocast_clone.data.grid import Grid
+from ml_severe_weather_forecast.data.grid import Grid
 
 EARTH_RADIUS_M = 6_371_000.0
 
@@ -2555,7 +2555,7 @@ Expected: 2 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/features/neighborhood.py tests/test_neighborhood.py
+git add src/ml_severe_weather_forecast/features/neighborhood.py tests/test_neighborhood.py
 git commit -m "feat(features): concentric-ring neighborhood max/mean"
 ```
 
@@ -2564,7 +2564,7 @@ git commit -m "feat(features): concentric-ring neighborhood max/mean"
 ### Task 24: Derived composites (EHI, SCP, STP)
 
 **Files:**
-- Create: `src/nadocast_clone/features/derived.py`
+- Create: `src/ml_severe_weather_forecast/features/derived.py`
 - Test: `tests/test_derived.py`
 
 - [ ] **Step 1: Test composite formulas with hand-computed values**
@@ -2574,7 +2574,7 @@ git commit -m "feat(features): concentric-ring neighborhood max/mean"
 import numpy as np
 import pandas as pd
 
-from nadocast_clone.features.derived import compute_composites, compute_lapse_rates
+from ml_severe_weather_forecast.features.derived import compute_composites, compute_lapse_rates
 
 
 def test_ehi_formula() -> None:
@@ -2612,7 +2612,7 @@ def test_lapse_rate_computation() -> None:
 - [ ] **Step 3: Implement composites**
 
 ```python
-# src/nadocast_clone/features/derived.py
+# src/ml_severe_weather_forecast/features/derived.py
 """Derived meteorological features: lapse rates, composites (EHI, SCP, STP)."""
 from __future__ import annotations
 
@@ -2687,7 +2687,7 @@ Expected: 2 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/features/derived.py tests/test_derived.py
+git add src/ml_severe_weather_forecast/features/derived.py tests/test_derived.py
 git commit -m "feat(features): derived composites (EHI, SCP, STP, lapse rates)"
 ```
 
@@ -2696,12 +2696,12 @@ git commit -m "feat(features): derived composites (EHI, SCP, STP, lapse rates)"
 ### Task 25: Per-cycle feature assembly orchestrator
 
 **Files:**
-- Create: `src/nadocast_clone/features/assembly.py`
+- Create: `src/ml_severe_weather_forecast/features/assembly.py`
 
 - [ ] **Step 1: Implement the orchestrator that strings everything together**
 
 ```python
-# src/nadocast_clone/features/assembly.py
+# src/ml_severe_weather_forecast/features/assembly.py
 """Per-cycle orchestration: GRIB2s → regridded frames → temporal agg → neighborhood → composites → final Parquet."""
 from __future__ import annotations
 
@@ -2712,15 +2712,15 @@ from typing import Iterable
 import pandas as pd
 import structlog
 
-from nadocast_clone.data.grid import Grid
-from nadocast_clone.data.hrrr import (
+from ml_severe_weather_forecast.data.grid import Grid
+from ml_severe_weather_forecast.data.hrrr import (
     HRRR_VARIABLES,
     extract_variables_to_dataset,
     regrid_to_cells,
 )
-from nadocast_clone.features.derived import compute_composites, compute_lapse_rates
-from nadocast_clone.features.extract import snapshot_anchors, temporal_aggregate
-from nadocast_clone.features.neighborhood import compute_ring_features
+from ml_severe_weather_forecast.features.derived import compute_composites, compute_lapse_rates
+from ml_severe_weather_forecast.features.extract import snapshot_anchors, temporal_aggregate
+from ml_severe_weather_forecast.features.neighborhood import compute_ring_features
 
 log = structlog.get_logger(__name__)
 
@@ -2805,27 +2805,27 @@ def assemble_cycle_features(
 - [ ] **Step 2: No new test added here (covered by integration test in Task 53). Manual sanity check:**
 
 ```bash
-uv run python -c "from nadocast_clone.features.assembly import assemble_cycle_features; print('importable')"
+uv run python -c "from ml_severe_weather_forecast.features.assembly import assemble_cycle_features; print('importable')"
 ```
 Expected: `importable`.
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/nadocast_clone/features/assembly.py
+git add src/ml_severe_weather_forecast/features/assembly.py
 git commit -m "feat(features): per-cycle assembly orchestrator"
 ```
 
 ---
 
-### Task 26: `nadocast extract` CLI subcommand
+### Task 26: `mlswf extract` CLI subcommand
 
 **Files:**
-- Modify: `src/nadocast_clone/cli.py`
+- Modify: `src/ml_severe_weather_forecast/cli.py`
 
-- [ ] **Step 1: Add `nadocast extract --date YYYY-MM-DD`**
+- [ ] **Step 1: Add `mlswf extract --date YYYY-MM-DD`**
 
-Append to `src/nadocast_clone/cli.py`:
+Append to `src/ml_severe_weather_forecast/cli.py`:
 
 ```python
 @app.command("extract")
@@ -2835,8 +2835,8 @@ def extract_cmd(
     """Extract features from one HRRR cycle's downloaded GRIB2 files."""
     from datetime import UTC, datetime
 
-    from nadocast_clone.data.grid import build_grid
-    from nadocast_clone.features.assembly import assemble_cycle_features
+    from ml_severe_weather_forecast.data.grid import build_grid
+    from ml_severe_weather_forecast.features.assembly import assemble_cycle_features
 
     cycle = datetime.fromisoformat(date).replace(tzinfo=UTC, hour=settings.hrrr_cycle_hour)
     grid = build_grid()
@@ -2855,14 +2855,14 @@ def extract_cmd(
 - [ ] **Step 2: Smoke-test help**
 
 ```bash
-uv run nadocast extract --help
+uv run mlswf extract --help
 ```
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/nadocast_clone/cli.py
-git commit -m "feat(cli): nadocast extract subcommand"
+git add src/ml_severe_weather_forecast/cli.py
+git commit -m "feat(cli): mlswf extract subcommand"
 ```
 
 ---
@@ -2889,9 +2889,9 @@ from pathlib import Path
 import psutil
 import typer
 
-from nadocast_clone.config import settings
-from nadocast_clone.data.grid import build_grid
-from nadocast_clone.features.assembly import assemble_cycle_features
+from ml_severe_weather_forecast.config import settings
+from ml_severe_weather_forecast.data.grid import build_grid
+from ml_severe_weather_forecast.features.assembly import assemble_cycle_features
 
 app = typer.Typer()
 
@@ -2956,7 +2956,7 @@ git commit -m "feat(scripts): parallel extraction over all training cycles"
 ### Task 28: SPC outlook downloader
 
 **Files:**
-- Create: `src/nadocast_clone/data/outlooks.py`
+- Create: `src/ml_severe_weather_forecast/data/outlooks.py`
 - Test: `tests/test_outlooks.py`
 
 - [ ] **Step 1: Test the URL-construction and date iteration**
@@ -2965,7 +2965,7 @@ git commit -m "feat(scripts): parallel extraction over all training cycles"
 # tests/test_outlooks.py
 from datetime import UTC, date
 
-from nadocast_clone.data.outlooks import outlook_archive_url
+from ml_severe_weather_forecast.data.outlooks import outlook_archive_url
 
 
 def test_outlook_archive_url_format() -> None:
@@ -2980,7 +2980,7 @@ def test_outlook_archive_url_format() -> None:
 - [ ] **Step 3: Implement outlook download**
 
 ```python
-# src/nadocast_clone/data/outlooks.py
+# src/ml_severe_weather_forecast/data/outlooks.py
 """SPC Day-1 Convective Outlook archive: download + rasterize to grid cells."""
 from __future__ import annotations
 
@@ -3043,7 +3043,7 @@ Expected: 1 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/data/outlooks.py tests/test_outlooks.py
+git add src/ml_severe_weather_forecast/data/outlooks.py tests/test_outlooks.py
 git commit -m "feat(outlooks): SPC Day-1 outlook downloader"
 ```
 
@@ -3052,7 +3052,7 @@ git commit -m "feat(outlooks): SPC Day-1 outlook downloader"
 ### Task 29: Rasterize outlook polygons onto the grid
 
 **Files:**
-- Modify: `src/nadocast_clone/data/outlooks.py`
+- Modify: `src/ml_severe_weather_forecast/data/outlooks.py`
 - Modify: `tests/test_outlooks.py`
 
 - [ ] **Step 1: Test rasterization with a synthetic polygon**
@@ -3065,8 +3065,8 @@ import pandas as pd
 import pytest
 from shapely.geometry import Polygon
 
-from nadocast_clone.data.grid import build_grid
-from nadocast_clone.data.outlooks import rasterize_outlook_to_grid
+from ml_severe_weather_forecast.data.grid import build_grid
+from ml_severe_weather_forecast.data.outlooks import rasterize_outlook_to_grid
 
 
 def test_rasterize_circular_polygon_picks_inside_cells() -> None:
@@ -3096,7 +3096,7 @@ def test_rasterize_circular_polygon_picks_inside_cells() -> None:
 
 - [ ] **Step 3: Implement rasterization**
 
-Append to `src/nadocast_clone/data/outlooks.py`:
+Append to `src/ml_severe_weather_forecast/data/outlooks.py`:
 
 ```python
 import geopandas as gpd  # noqa: E402
@@ -3104,7 +3104,7 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from shapely.geometry import Point  # noqa: E402
 
-from nadocast_clone.data.grid import Grid  # noqa: E402
+from ml_severe_weather_forecast.data.grid import Grid  # noqa: E402
 
 # SPC's per-hazard probability label → numeric (categorical bins)
 SPC_TORNADO_PROBS = {"0.02": 0.02, "0.05": 0.05, "0.10": 0.10, "0.15": 0.15, "0.30": 0.30, "0.45": 0.45, "0.60": 0.60}
@@ -3176,7 +3176,7 @@ def rasterize_outlook_to_grid(gdf: gpd.GeoDataFrame, grid: Grid) -> pd.DataFrame
 
 def build_outlook_year(year: int, raw_dir: Path, out_dir: Path) -> list[Path]:
     """For each cycle date in `raw_dir`, rasterize and write a per-day Parquet."""
-    from nadocast_clone.data.grid import build_grid as _build_grid
+    from ml_severe_weather_forecast.data.grid import build_grid as _build_grid
 
     grid = _build_grid()
     written: list[Path] = []
@@ -3205,7 +3205,7 @@ Expected: 2 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/data/outlooks.py tests/test_outlooks.py
+git add src/ml_severe_weather_forecast/data/outlooks.py tests/test_outlooks.py
 git commit -m "feat(outlooks): rasterize Day-1 polygons onto 50km grid"
 ```
 
@@ -3214,11 +3214,11 @@ git commit -m "feat(outlooks): rasterize Day-1 polygons onto 50km grid"
 ### Task 30: SPC outlook CLI subcommand
 
 **Files:**
-- Modify: `src/nadocast_clone/cli.py`
+- Modify: `src/ml_severe_weather_forecast/cli.py`
 
-- [ ] **Step 1: Add `nadocast download spc-outlooks`**
+- [ ] **Step 1: Add `mlswf download spc-outlooks`**
 
-Append to `src/nadocast_clone/cli.py`:
+Append to `src/ml_severe_weather_forecast/cli.py`:
 
 ```python
 @download_app.command("spc-outlooks")
@@ -3229,7 +3229,7 @@ def download_spc_outlooks_cmd(
     """Download SPC Day-1 outlook shapefiles for the cycle dates in our season."""
     from datetime import date, timedelta
 
-    from nadocast_clone.data.outlooks import build_outlook_year, download_outlook, unzip_outlook
+    from ml_severe_weather_forecast.data.outlooks import build_outlook_year, download_outlook, unzip_outlook
 
     raw_dir = settings.outlooks_dir / "raw"
     raw_dir.mkdir(parents=True, exist_ok=True)
@@ -3252,14 +3252,14 @@ def download_spc_outlooks_cmd(
 - [ ] **Step 2: Smoke-test help**
 
 ```bash
-uv run nadocast download spc-outlooks --help
+uv run mlswf download spc-outlooks --help
 ```
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/nadocast_clone/cli.py
-git commit -m "feat(cli): nadocast download spc-outlooks subcommand"
+git add src/ml_severe_weather_forecast/cli.py
+git commit -m "feat(cli): mlswf download spc-outlooks subcommand"
 ```
 
 ---
@@ -3269,7 +3269,7 @@ git commit -m "feat(cli): nadocast download spc-outlooks subcommand"
 ### Task 31: Climatology — per (cell × month) base rate from 2010–2021 reports
 
 **Files:**
-- Create: `src/nadocast_clone/climatology.py`
+- Create: `src/ml_severe_weather_forecast/climatology.py`
 - Test: `tests/test_climatology.py`
 
 - [ ] **Step 1: Test climatology computation**
@@ -3280,8 +3280,8 @@ from datetime import UTC, datetime
 
 import pandas as pd
 
-from nadocast_clone.climatology import compute_climatology
-from nadocast_clone.data.grid import build_grid
+from ml_severe_weather_forecast.climatology import compute_climatology
+from ml_severe_weather_forecast.data.grid import build_grid
 
 
 def test_compute_climatology_returns_per_cell_month_rate() -> None:
@@ -3317,7 +3317,7 @@ def test_compute_climatology_returns_per_cell_month_rate() -> None:
 - [ ] **Step 3: Implement climatology**
 
 ```python
-# src/nadocast_clone/climatology.py
+# src/ml_severe_weather_forecast/climatology.py
 """Climatological baseline: per (cell × month) historical event probability."""
 from __future__ import annotations
 
@@ -3327,8 +3327,8 @@ import numpy as np
 import pandas as pd
 from sklearn.neighbors import BallTree
 
-from nadocast_clone.config import settings
-from nadocast_clone.data.grid import Grid
+from ml_severe_weather_forecast.config import settings
+from ml_severe_weather_forecast.data.grid import Grid
 
 EARTH_RADIUS_M = 6_371_000.0
 
@@ -3396,7 +3396,7 @@ Expected: 1 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/climatology.py tests/test_climatology.py
+git add src/ml_severe_weather_forecast/climatology.py tests/test_climatology.py
 git commit -m "feat(climatology): per (cell, month) base-rate from 2010–2021 reports"
 ```
 
@@ -3407,7 +3407,7 @@ git commit -m "feat(climatology): per (cell, month) base-rate from 2010–2021 r
 ### Task 32: Combine features + labels per fold
 
 **Files:**
-- Create: `src/nadocast_clone/training.py`
+- Create: `src/ml_severe_weather_forecast/training.py`
 - Test: `tests/test_training.py`
 
 - [ ] **Step 1: Test training-set assembly**
@@ -3421,7 +3421,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from nadocast_clone.training import (
+from ml_severe_weather_forecast.training import (
     Fold,
     assemble_fold_data,
     fold_definitions,
@@ -3480,7 +3480,7 @@ def test_load_year_features_and_labels_joins_correctly(tmp_path: Path) -> None:
 - [ ] **Step 3: Implement training assembly**
 
 ```python
-# src/nadocast_clone/training.py
+# src/ml_severe_weather_forecast/training.py
 """Training: fold definitions, table assembly, XGBoost training loop."""
 from __future__ import annotations
 
@@ -3572,7 +3572,7 @@ Expected: 2 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/training.py tests/test_training.py
+git add src/ml_severe_weather_forecast/training.py tests/test_training.py
 git commit -m "feat(training): fold definitions and per-fold table assembly"
 ```
 
@@ -3583,7 +3583,7 @@ git commit -m "feat(training): fold definitions and per-fold table assembly"
 ### Task 33: Feature/label column selectors
 
 **Files:**
-- Modify: `src/nadocast_clone/training.py`
+- Modify: `src/ml_severe_weather_forecast/training.py`
 - Modify: `tests/test_training.py`
 
 - [ ] **Step 1: Add a test for column selection**
@@ -3592,7 +3592,7 @@ Append to `tests/test_training.py`:
 
 ```python
 def test_select_feature_columns_excludes_metadata_and_labels() -> None:
-    from nadocast_clone.training import select_feature_columns
+    from ml_severe_weather_forecast.training import select_feature_columns
 
     df = pd.DataFrame(
         {
@@ -3619,7 +3619,7 @@ def test_select_feature_columns_excludes_metadata_and_labels() -> None:
 
 - [ ] **Step 3: Implement column selectors**
 
-Append to `src/nadocast_clone/training.py`:
+Append to `src/ml_severe_weather_forecast/training.py`:
 
 ```python
 _LABEL_COLUMNS = {
@@ -3651,7 +3651,7 @@ uv run pytest tests/test_training.py -v
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/training.py tests/test_training.py
+git add src/ml_severe_weather_forecast/training.py tests/test_training.py
 git commit -m "feat(training): feature column selector"
 ```
 
@@ -3660,7 +3660,7 @@ git commit -m "feat(training): feature column selector"
 ### Task 34: Train one booster on a fold
 
 **Files:**
-- Modify: `src/nadocast_clone/training.py`
+- Modify: `src/ml_severe_weather_forecast/training.py`
 - Modify: `tests/test_training.py`
 
 - [ ] **Step 1: Test that a tiny synthetic fold yields a fitted booster**
@@ -3669,7 +3669,7 @@ Append to `tests/test_training.py`:
 
 ```python
 def test_train_booster_on_synthetic_data() -> None:
-    from nadocast_clone.training import train_one_booster
+    from ml_severe_weather_forecast.training import train_one_booster
 
     rng = np.random.default_rng(0)
     n = 2000
@@ -3704,7 +3704,7 @@ def test_train_booster_on_synthetic_data() -> None:
 
 - [ ] **Step 3: Implement single-booster training**
 
-Append to `src/nadocast_clone/training.py`:
+Append to `src/ml_severe_weather_forecast/training.py`:
 
 ```python
 import xgboost as xgb  # noqa: E402
@@ -3765,7 +3765,7 @@ Expected: 3 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/training.py tests/test_training.py
+git add src/ml_severe_weather_forecast/training.py tests/test_training.py
 git commit -m "feat(training): single-booster training with early stopping"
 ```
 
@@ -3774,7 +3774,7 @@ git commit -m "feat(training): single-booster training with early stopping"
 ### Task 35: Hyperparameter grid search per fold/hazard
 
 **Files:**
-- Modify: `src/nadocast_clone/training.py`
+- Modify: `src/ml_severe_weather_forecast/training.py`
 - Modify: `tests/test_training.py`
 
 - [ ] **Step 1: Test the grid-search loop selects the best HP combo**
@@ -3783,7 +3783,7 @@ Append to `tests/test_training.py`:
 
 ```python
 def test_grid_search_returns_best_combo() -> None:
-    from nadocast_clone.training import grid_search_hps
+    from ml_severe_weather_forecast.training import grid_search_hps
 
     rng = np.random.default_rng(1)
     n = 1000
@@ -3817,7 +3817,7 @@ def test_grid_search_returns_best_combo() -> None:
 
 - [ ] **Step 3: Implement grid search**
 
-Append to `src/nadocast_clone/training.py`:
+Append to `src/ml_severe_weather_forecast/training.py`:
 
 ```python
 from sklearn.metrics import log_loss  # noqa: E402
@@ -3868,7 +3868,7 @@ uv run pytest tests/test_training.py -v
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/training.py tests/test_training.py
+git add src/ml_severe_weather_forecast/training.py tests/test_training.py
 git commit -m "feat(training): hyperparameter grid search by calib log-loss"
 ```
 
@@ -3877,16 +3877,16 @@ git commit -m "feat(training): hyperparameter grid search by calib log-loss"
 ### Task 36: Full per-fold per-hazard pipeline
 
 **Files:**
-- Modify: `src/nadocast_clone/training.py`
+- Modify: `src/ml_severe_weather_forecast/training.py`
 
 - [ ] **Step 1: Implement the orchestrator that runs grid search and saves artifacts**
 
-Append to `src/nadocast_clone/training.py`:
+Append to `src/ml_severe_weather_forecast/training.py`:
 
 ```python
 import joblib  # noqa: E402
 
-from nadocast_clone.config import settings  # noqa: E402
+from ml_severe_weather_forecast.config import settings  # noqa: E402
 
 
 def train_fold_for_hazard(
@@ -3932,26 +3932,26 @@ def train_fold_for_hazard(
 - [ ] **Step 2: Smoke-test the import**
 
 ```bash
-uv run python -c "from nadocast_clone.training import train_fold_for_hazard; print('ok')"
+uv run python -c "from ml_severe_weather_forecast.training import train_fold_for_hazard; print('ok')"
 ```
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/nadocast_clone/training.py
+git add src/ml_severe_weather_forecast/training.py
 git commit -m "feat(training): fold/hazard orchestrator with artifact persistence"
 ```
 
 ---
 
-### Task 37: `nadocast train` CLI subcommand
+### Task 37: `mlswf train` CLI subcommand
 
 **Files:**
-- Modify: `src/nadocast_clone/cli.py`
+- Modify: `src/ml_severe_weather_forecast/cli.py`
 
-- [ ] **Step 1: Add `nadocast train`**
+- [ ] **Step 1: Add `mlswf train`**
 
-Append to `src/nadocast_clone/cli.py`:
+Append to `src/ml_severe_weather_forecast/cli.py`:
 
 ```python
 @app.command("train")
@@ -3960,7 +3960,7 @@ def train_cmd(
     gpu: bool = typer.Option(True, help="Use GPU (cuda) for XGBoost."),
 ) -> None:
     """Train one booster per fold for a given hazard."""
-    from nadocast_clone.training import fold_definitions, train_fold_for_hazard
+    from ml_severe_weather_forecast.training import fold_definitions, train_fold_for_hazard
 
     if hazard not in {"tor", "hail", "wind"}:
         raise typer.BadParameter("hazard must be tor, hail, or wind")
@@ -3983,14 +3983,14 @@ def train_cmd(
 - [ ] **Step 2: Smoke-test help**
 
 ```bash
-uv run nadocast train --help
+uv run mlswf train --help
 ```
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/nadocast_clone/cli.py
-git commit -m "feat(cli): nadocast train subcommand"
+git add src/ml_severe_weather_forecast/cli.py
+git commit -m "feat(cli): mlswf train subcommand"
 ```
 
 ---
@@ -4000,7 +4000,7 @@ git commit -m "feat(cli): nadocast train subcommand"
 ### Task 38: Isotonic calibration fitting and application
 
 **Files:**
-- Create: `src/nadocast_clone/calibration.py`
+- Create: `src/ml_severe_weather_forecast/calibration.py`
 - Test: `tests/test_calibration.py`
 
 - [ ] **Step 1: Test isotonic with miscalibrated input**
@@ -4009,7 +4009,7 @@ git commit -m "feat(cli): nadocast train subcommand"
 # tests/test_calibration.py
 import numpy as np
 
-from nadocast_clone.calibration import fit_isotonic, calibrate
+from ml_severe_weather_forecast.calibration import fit_isotonic, calibrate
 
 
 def test_isotonic_fixes_systematic_overconfidence() -> None:
@@ -4040,7 +4040,7 @@ def test_calibrate_is_monotone() -> None:
 - [ ] **Step 3: Implement calibration**
 
 ```python
-# src/nadocast_clone/calibration.py
+# src/ml_severe_weather_forecast/calibration.py
 """Isotonic regression calibration."""
 from __future__ import annotations
 
@@ -4070,7 +4070,7 @@ Expected: 2 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/calibration.py tests/test_calibration.py
+git add src/ml_severe_weather_forecast/calibration.py tests/test_calibration.py
 git commit -m "feat(calibration): isotonic fit and apply"
 ```
 
@@ -4079,14 +4079,14 @@ git commit -m "feat(calibration): isotonic fit and apply"
 ### Task 39: Wire calibration into the training artifact
 
 **Files:**
-- Modify: `src/nadocast_clone/training.py`
+- Modify: `src/ml_severe_weather_forecast/training.py`
 
 - [ ] **Step 1: Update `train_fold_for_hazard` to fit isotonic on calib + persist it + persist test predictions**
 
-Replace `train_fold_for_hazard` in `src/nadocast_clone/training.py` with:
+Replace `train_fold_for_hazard` in `src/ml_severe_weather_forecast/training.py` with:
 
 ```python
-from nadocast_clone.calibration import calibrate, fit_isotonic  # noqa: E402
+from ml_severe_weather_forecast.calibration import calibrate, fit_isotonic  # noqa: E402
 
 
 def train_fold_for_hazard(
@@ -4151,7 +4151,7 @@ uv run pytest tests/test_training.py tests/test_calibration.py -v
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/nadocast_clone/training.py
+git add src/ml_severe_weather_forecast/training.py
 git commit -m "feat(training): integrate isotonic calibration and persist test predictions"
 ```
 
@@ -4162,7 +4162,7 @@ git commit -m "feat(training): integrate isotonic calibration and persist test p
 ### Task 40: Brier score + decomposition
 
 **Files:**
-- Create: `src/nadocast_clone/verification.py`
+- Create: `src/ml_severe_weather_forecast/verification.py`
 - Test: `tests/test_verification.py`
 
 - [ ] **Step 1: Test Brier and BSS**
@@ -4171,7 +4171,7 @@ git commit -m "feat(training): integrate isotonic calibration and persist test p
 # tests/test_verification.py
 import numpy as np
 
-from nadocast_clone.verification import brier_decomposition, brier_score, brier_skill_score
+from ml_severe_weather_forecast.verification import brier_decomposition, brier_score, brier_skill_score
 
 
 def test_brier_score_zero_for_perfect_predictions() -> None:
@@ -4206,7 +4206,7 @@ def test_brier_decomposition_sums_to_total() -> None:
 - [ ] **Step 3: Implement Brier metrics**
 
 ```python
-# src/nadocast_clone/verification.py
+# src/ml_severe_weather_forecast/verification.py
 """Probabilistic-forecast verification metrics."""
 from __future__ import annotations
 
@@ -4265,7 +4265,7 @@ Expected: 3 passed.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/verification.py tests/test_verification.py
+git add src/ml_severe_weather_forecast/verification.py tests/test_verification.py
 git commit -m "feat(verification): Brier score + reliability/resolution/uncertainty decomposition"
 ```
 
@@ -4274,7 +4274,7 @@ git commit -m "feat(verification): Brier score + reliability/resolution/uncertai
 ### Task 41: Reliability diagram data
 
 **Files:**
-- Modify: `src/nadocast_clone/verification.py`
+- Modify: `src/ml_severe_weather_forecast/verification.py`
 - Modify: `tests/test_verification.py`
 
 - [ ] **Step 1: Test reliability binning**
@@ -4283,7 +4283,7 @@ Append to `tests/test_verification.py`:
 
 ```python
 def test_reliability_diagram_returns_n_bins_rows() -> None:
-    from nadocast_clone.verification import reliability_diagram
+    from ml_severe_weather_forecast.verification import reliability_diagram
 
     rng = np.random.default_rng(2)
     n = 5000
@@ -4298,7 +4298,7 @@ def test_reliability_diagram_returns_n_bins_rows() -> None:
 
 - [ ] **Step 3: Implement reliability**
 
-Append to `src/nadocast_clone/verification.py`:
+Append to `src/ml_severe_weather_forecast/verification.py`:
 
 ```python
 import pandas as pd  # noqa: E402
@@ -4339,7 +4339,7 @@ uv run pytest tests/test_verification.py -v
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/verification.py tests/test_verification.py
+git add src/ml_severe_weather_forecast/verification.py tests/test_verification.py
 git commit -m "feat(verification): reliability diagram binning"
 ```
 
@@ -4348,7 +4348,7 @@ git commit -m "feat(verification): reliability diagram binning"
 ### Task 42: ROC, AUC, performance diagram
 
 **Files:**
-- Modify: `src/nadocast_clone/verification.py`
+- Modify: `src/ml_severe_weather_forecast/verification.py`
 - Modify: `tests/test_verification.py`
 
 - [ ] **Step 1: Test ROC and performance metrics**
@@ -4357,7 +4357,7 @@ Append to `tests/test_verification.py`:
 
 ```python
 def test_roc_auc_perfect_classifier() -> None:
-    from nadocast_clone.verification import roc_auc_value
+    from ml_severe_weather_forecast.verification import roc_auc_value
 
     p = np.array([0.0, 0.1, 0.2, 0.3, 0.9, 0.95, 1.0])
     y = np.array([0, 0, 0, 0, 1, 1, 1])
@@ -4365,7 +4365,7 @@ def test_roc_auc_perfect_classifier() -> None:
 
 
 def test_performance_diagram_returns_pod_sr_csi() -> None:
-    from nadocast_clone.verification import performance_diagram
+    from ml_severe_weather_forecast.verification import performance_diagram
 
     rng = np.random.default_rng(3)
     p = rng.uniform(0, 1, size=2000)
@@ -4379,7 +4379,7 @@ def test_performance_diagram_returns_pod_sr_csi() -> None:
 
 - [ ] **Step 3: Implement ROC & performance metrics**
 
-Append to `src/nadocast_clone/verification.py`:
+Append to `src/ml_severe_weather_forecast/verification.py`:
 
 ```python
 from sklearn.metrics import roc_auc_score  # noqa: E402
@@ -4418,7 +4418,7 @@ uv run pytest tests/test_verification.py -v
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/nadocast_clone/verification.py tests/test_verification.py
+git add src/ml_severe_weather_forecast/verification.py tests/test_verification.py
 git commit -m "feat(verification): ROC AUC and performance diagram"
 ```
 
@@ -4427,7 +4427,7 @@ git commit -m "feat(verification): ROC AUC and performance diagram"
 ### Task 43: Fractions skill score (FSS)
 
 **Files:**
-- Modify: `src/nadocast_clone/verification.py`
+- Modify: `src/ml_severe_weather_forecast/verification.py`
 - Modify: `tests/test_verification.py`
 
 - [ ] **Step 1: Test FSS at a single radius**
@@ -4436,7 +4436,7 @@ Append to `tests/test_verification.py`:
 
 ```python
 def test_fss_perfect_match_is_one() -> None:
-    from nadocast_clone.verification import fractions_skill_score
+    from ml_severe_weather_forecast.verification import fractions_skill_score
 
     cells = np.array(
         [["c_001_001", 0.0, 35.0, -97.0, 1.0, 1]],
@@ -4457,7 +4457,7 @@ def test_fss_perfect_match_is_one() -> None:
 
 - [ ] **Step 2: Implement FSS**
 
-Append to `src/nadocast_clone/verification.py`:
+Append to `src/ml_severe_weather_forecast/verification.py`:
 
 ```python
 from sklearn.neighbors import BallTree  # noqa: E402
@@ -4505,7 +4505,7 @@ uv run pytest tests/test_verification.py -v
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/nadocast_clone/verification.py tests/test_verification.py
+git add src/ml_severe_weather_forecast/verification.py tests/test_verification.py
 git commit -m "feat(verification): fractions skill score (single-radius)"
 ```
 
@@ -4514,11 +4514,11 @@ git commit -m "feat(verification): fractions skill score (single-radius)"
 ### Task 44: Aggregate metrics across folds
 
 **Files:**
-- Modify: `src/nadocast_clone/verification.py`
+- Modify: `src/ml_severe_weather_forecast/verification.py`
 
 - [ ] **Step 1: Implement the aggregator that loads model artifacts and produces a metrics report**
 
-Append to `src/nadocast_clone/verification.py`:
+Append to `src/ml_severe_weather_forecast/verification.py`:
 
 ```python
 from pathlib import Path  # noqa: E402
@@ -4591,13 +4591,13 @@ def aggregate_metrics(
 - [ ] **Step 2: Smoke-test import**
 
 ```bash
-uv run python -c "from nadocast_clone.verification import aggregate_metrics; print('ok')"
+uv run python -c "from ml_severe_weather_forecast.verification import aggregate_metrics; print('ok')"
 ```
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/nadocast_clone/verification.py
+git add src/ml_severe_weather_forecast/verification.py
 git commit -m "feat(verification): pooled + per-fold metric aggregation"
 ```
 
@@ -4606,7 +4606,7 @@ git commit -m "feat(verification): pooled + per-fold metric aggregation"
 ### Task 45: Baselines — climatology, MXUPHL threshold, SPC outlooks
 
 **Files:**
-- Create: `src/nadocast_clone/baselines.py`
+- Create: `src/ml_severe_weather_forecast/baselines.py`
 - Test: `tests/test_baselines.py`
 
 - [ ] **Step 1: Test the MXUPHL sigmoid baseline fitting**
@@ -4616,7 +4616,7 @@ git commit -m "feat(verification): pooled + per-fold metric aggregation"
 import numpy as np
 import pandas as pd
 
-from nadocast_clone.baselines import (
+from ml_severe_weather_forecast.baselines import (
     align_climatology_to_predictions,
     fit_mxuphl_sigmoid,
     spc_outlook_predictions,
@@ -4649,7 +4649,7 @@ def test_align_climatology_handles_missing_cells() -> None:
 - [ ] **Step 2: Implement baselines**
 
 ```python
-# src/nadocast_clone/baselines.py
+# src/ml_severe_weather_forecast/baselines.py
 """Baselines: climatology alignment, MXUPHL sigmoid threshold, SPC outlook predictions."""
 from __future__ import annotations
 
@@ -4735,20 +4735,20 @@ uv run pytest tests/test_baselines.py -v
 - [ ] **Step 4: Commit**
 
 ```bash
-git add src/nadocast_clone/baselines.py tests/test_baselines.py
+git add src/ml_severe_weather_forecast/baselines.py tests/test_baselines.py
 git commit -m "feat(baselines): climatology alignment, MXUPHL sigmoid, SPC outlook lookup"
 ```
 
 ---
 
-### Task 46: `nadocast verify` CLI subcommand
+### Task 46: `mlswf verify` CLI subcommand
 
 **Files:**
-- Modify: `src/nadocast_clone/cli.py`
+- Modify: `src/ml_severe_weather_forecast/cli.py`
 
-- [ ] **Step 1: Add `nadocast verify`**
+- [ ] **Step 1: Add `mlswf verify`**
 
-Append to `src/nadocast_clone/cli.py`:
+Append to `src/ml_severe_weather_forecast/cli.py`:
 
 ```python
 @app.command("verify")
@@ -4761,9 +4761,9 @@ def verify_cmd(
 
     import pandas as pd
 
-    from nadocast_clone.baselines import align_climatology_to_predictions
-    from nadocast_clone.data.grid import build_grid
-    from nadocast_clone.verification import aggregate_metrics, load_test_predictions
+    from ml_severe_weather_forecast.baselines import align_climatology_to_predictions
+    from ml_severe_weather_forecast.data.grid import build_grid
+    from ml_severe_weather_forecast.verification import aggregate_metrics, load_test_predictions
 
     if hazard not in {"tor", "hail", "wind"}:
         raise typer.BadParameter("hazard must be tor, hail, or wind")
@@ -4800,14 +4800,14 @@ def verify_cmd(
 - [ ] **Step 2: Smoke-test help**
 
 ```bash
-uv run nadocast verify --help
+uv run mlswf verify --help
 ```
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/nadocast_clone/cli.py
-git commit -m "feat(cli): nadocast verify subcommand"
+git add src/ml_severe_weather_forecast/cli.py
+git commit -m "feat(cli): mlswf verify subcommand"
 ```
 
 ---
@@ -4819,12 +4819,12 @@ Per the spec, `viz.py` has no unit tests — visual correctness is verified manu
 ### Task 47: Cartopy basemap utility + probability map
 
 **Files:**
-- Create: `src/nadocast_clone/viz.py`
+- Create: `src/ml_severe_weather_forecast/viz.py`
 
 - [ ] **Step 1: Implement basemap and forecast-map plotting**
 
 ```python
-# src/nadocast_clone/viz.py
+# src/ml_severe_weather_forecast/viz.py
 """Matplotlib + cartopy figure builders. No unit tests; verify visually."""
 from __future__ import annotations
 
@@ -4906,8 +4906,8 @@ Make a quick smoke test:
 uv run python -c "
 from pathlib import Path
 import numpy as np
-from nadocast_clone.data.grid import build_grid
-from nadocast_clone.viz import plot_forecast_map
+from ml_severe_weather_forecast.data.grid import build_grid
+from ml_severe_weather_forecast.viz import plot_forecast_map
 
 g = build_grid()
 probs = np.random.rand(g.n_cells) * 0.3
@@ -4919,7 +4919,7 @@ Expected: `data/outputs/smoke.png` exists. Open and visually verify it shows a C
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/nadocast_clone/viz.py
+git add src/ml_severe_weather_forecast/viz.py
 git commit -m "feat(viz): CONUS basemap + forecast-probability map"
 ```
 
@@ -4928,11 +4928,11 @@ git commit -m "feat(viz): CONUS basemap + forecast-probability map"
 ### Task 48: Side-by-side panel (our forecast vs. SPC outlook)
 
 **Files:**
-- Modify: `src/nadocast_clone/viz.py`
+- Modify: `src/ml_severe_weather_forecast/viz.py`
 
 - [ ] **Step 1: Add side-by-side renderer**
 
-Append to `src/nadocast_clone/viz.py`:
+Append to `src/ml_severe_weather_forecast/viz.py`:
 
 ```python
 def plot_side_by_side(
@@ -4976,7 +4976,7 @@ def plot_side_by_side(
 - [ ] **Step 2: Commit**
 
 ```bash
-git add src/nadocast_clone/viz.py
+git add src/ml_severe_weather_forecast/viz.py
 git commit -m "feat(viz): side-by-side our-model vs SPC outlook panel"
 ```
 
@@ -4985,11 +4985,11 @@ git commit -m "feat(viz): side-by-side our-model vs SPC outlook panel"
 ### Task 49: Reliability + ROC + performance diagrams
 
 **Files:**
-- Modify: `src/nadocast_clone/viz.py`
+- Modify: `src/ml_severe_weather_forecast/viz.py`
 
 - [ ] **Step 1: Add static-figure renderers**
 
-Append to `src/nadocast_clone/viz.py`:
+Append to `src/ml_severe_weather_forecast/viz.py`:
 
 ```python
 def plot_reliability(reliability_df: pd.DataFrame, out_path: Path, title: str) -> Path:
@@ -5062,7 +5062,7 @@ def plot_feature_importance(
 - [ ] **Step 2: Commit**
 
 ```bash
-git add src/nadocast_clone/viz.py
+git add src/ml_severe_weather_forecast/viz.py
 git commit -m "feat(viz): reliability, ROC, performance, feature-importance figures"
 ```
 
@@ -5071,11 +5071,11 @@ git commit -m "feat(viz): reliability, ROC, performance, feature-importance figu
 ### Task 50: Monthly skill heatmap + hits/misses mosaic
 
 **Files:**
-- Modify: `src/nadocast_clone/viz.py`
+- Modify: `src/ml_severe_weather_forecast/viz.py`
 
 - [ ] **Step 1: Add the monthly heatmap renderer**
 
-Append to `src/nadocast_clone/viz.py`:
+Append to `src/ml_severe_weather_forecast/viz.py`:
 
 ```python
 def plot_monthly_bss_heatmap(
@@ -5134,7 +5134,7 @@ def plot_hits_misses_mosaic(
 - [ ] **Step 2: Commit**
 
 ```bash
-git add src/nadocast_clone/viz.py
+git add src/ml_severe_weather_forecast/viz.py
 git commit -m "feat(viz): monthly BSS heatmap and hits/misses 2×2 mosaic"
 ```
 
@@ -5143,11 +5143,11 @@ git commit -m "feat(viz): monthly BSS heatmap and hits/misses 2×2 mosaic"
 ### Task 51: SHAP summary plot
 
 **Files:**
-- Modify: `src/nadocast_clone/viz.py`
+- Modify: `src/ml_severe_weather_forecast/viz.py`
 
 - [ ] **Step 1: Add a SHAP summary helper that samples for tractability**
 
-Append to `src/nadocast_clone/viz.py`:
+Append to `src/ml_severe_weather_forecast/viz.py`:
 
 ```python
 def plot_shap_summary(
@@ -5172,20 +5172,20 @@ def plot_shap_summary(
 - [ ] **Step 2: Commit**
 
 ```bash
-git add src/nadocast_clone/viz.py
+git add src/ml_severe_weather_forecast/viz.py
 git commit -m "feat(viz): SHAP summary plot (sampled for tractability)"
 ```
 
 ---
 
-### Task 52: `nadocast plot` CLI subcommand
+### Task 52: `mlswf plot` CLI subcommand
 
 **Files:**
-- Modify: `src/nadocast_clone/cli.py`
+- Modify: `src/ml_severe_weather_forecast/cli.py`
 
-- [ ] **Step 1: Add `nadocast plot`**
+- [ ] **Step 1: Add `mlswf plot`**
 
-Append to `src/nadocast_clone/cli.py`:
+Append to `src/ml_severe_weather_forecast/cli.py`:
 
 ```python
 @app.command("plot")
@@ -5199,9 +5199,9 @@ def plot_cmd(
 
     import pandas as pd
 
-    from nadocast_clone.data.grid import build_grid
-    from nadocast_clone.verification import load_test_predictions
-    from nadocast_clone.viz import plot_forecast_map
+    from ml_severe_weather_forecast.data.grid import build_grid
+    from ml_severe_weather_forecast.verification import load_test_predictions
+    from ml_severe_weather_forecast.viz import plot_forecast_map
 
     if hazard not in {"tor", "hail", "wind"}:
         raise typer.BadParameter("hazard must be tor, hail, or wind")
@@ -5229,14 +5229,14 @@ Add `import numpy as np` at the top of `cli.py` if not already present.
 - [ ] **Step 2: Smoke-test help**
 
 ```bash
-uv run nadocast plot --help
+uv run mlswf plot --help
 ```
 
 - [ ] **Step 3: Commit**
 
 ```bash
-git add src/nadocast_clone/cli.py
-git commit -m "feat(cli): nadocast plot subcommand"
+git add src/ml_severe_weather_forecast/cli.py
+git commit -m "feat(cli): mlswf plot subcommand"
 ```
 
 ---
@@ -5266,12 +5266,12 @@ FIXTURE_GRIB = Path(__file__).parent / "fixtures" / "tiny_hrrr.grib2"
 
 @pytest.mark.skipif(not FIXTURE_GRIB.exists(), reason="tiny_hrrr.grib2 fixture not present")
 def test_pipeline_runs_end_to_end(tmp_path: Path) -> None:
-    from nadocast_clone.calibration import calibrate, fit_isotonic
-    from nadocast_clone.data.grid import build_grid
-    from nadocast_clone.data.hrrr import extract_variables_to_dataset, regrid_to_cells
-    from nadocast_clone.features.assembly import assemble_cycle_features
-    from nadocast_clone.labels import label_cycle
-    from nadocast_clone.training import train_one_booster
+    from ml_severe_weather_forecast.calibration import calibrate, fit_isotonic
+    from ml_severe_weather_forecast.data.grid import build_grid
+    from ml_severe_weather_forecast.data.hrrr import extract_variables_to_dataset, regrid_to_cells
+    from ml_severe_weather_forecast.features.assembly import assemble_cycle_features
+    from ml_severe_weather_forecast.labels import label_cycle
+    from ml_severe_weather_forecast.training import train_one_booster
 
     grid = build_grid()
 
@@ -5349,19 +5349,19 @@ from __future__ import annotations
 
 import subprocess
 
-from nadocast_clone.config import settings
+from ml_severe_weather_forecast.config import settings
 
 
 def main() -> None:
     train_start = f"{settings.train_year_start}-04-01"
     train_end = f"{settings.train_year_end}-07-31"
-    subprocess.check_call(["uv", "run", "nadocast", "download", "hrrr", "--start", train_start, "--end", train_end])
+    subprocess.check_call(["uv", "run", "mlswf", "download", "hrrr", "--start", train_start, "--end", train_end])
     subprocess.check_call(
-        ["uv", "run", "nadocast", "download", "reports",
+        ["uv", "run", "mlswf", "download", "reports",
          "--start", str(settings.climo_year_start), "--end", str(settings.train_year_end)]
     )
     subprocess.check_call(
-        ["uv", "run", "nadocast", "download", "spc-outlooks",
+        ["uv", "run", "mlswf", "download", "spc-outlooks",
          "--start", str(settings.train_year_start), "--end", str(settings.train_year_end)]
     )
 
@@ -5395,9 +5395,9 @@ import subprocess
 
 import pandas as pd
 
-from nadocast_clone.climatology import compute_climatology
-from nadocast_clone.config import settings
-from nadocast_clone.data.grid import build_grid
+from ml_severe_weather_forecast.climatology import compute_climatology
+from ml_severe_weather_forecast.config import settings
+from ml_severe_weather_forecast.data.grid import build_grid
 
 
 def _build_climatology() -> None:
@@ -5415,10 +5415,10 @@ def _build_climatology() -> None:
 
 def main() -> None:
     for year in range(settings.train_year_start, settings.train_year_end + 1):
-        subprocess.check_call(["uv", "run", "nadocast", "label", "--year", str(year)])
+        subprocess.check_call(["uv", "run", "mlswf", "label", "--year", str(year)])
     _build_climatology()
     for hazard in ("tor", "hail", "wind"):
-        subprocess.check_call(["uv", "run", "nadocast", "train", "--hazard", hazard])
+        subprocess.check_call(["uv", "run", "mlswf", "train", "--hazard", hazard])
 
 
 if __name__ == "__main__":
@@ -5454,21 +5454,21 @@ import joblib
 import numpy as np
 import pandas as pd
 
-from nadocast_clone.baselines import (
+from ml_severe_weather_forecast.baselines import (
     align_climatology_to_predictions,
     fit_mxuphl_sigmoid,
     predict_mxuphl_sigmoid,
     spc_outlook_predictions,
 )
-from nadocast_clone.config import settings
-from nadocast_clone.verification import (
+from ml_severe_weather_forecast.config import settings
+from ml_severe_weather_forecast.verification import (
     aggregate_metrics,
     brier_skill_score,
     load_test_predictions,
     performance_diagram,
     reliability_diagram,
 )
-from nadocast_clone.viz import (
+from ml_severe_weather_forecast.viz import (
     plot_feature_importance,
     plot_monthly_bss_heatmap,
     plot_reliability,
@@ -5550,7 +5550,7 @@ def main() -> None:
     fig_dir = Path("docs") / "figures"
     fig_dir.mkdir(parents=True, exist_ok=True)
     for hazard in ("tor", "hail", "wind"):
-        subprocess.check_call(["uv", "run", "nadocast", "verify", "--hazard", hazard])
+        subprocess.check_call(["uv", "run", "mlswf", "verify", "--hazard", hazard])
         _figures_for_hazard(hazard, fig_dir)
     _monthly_bss_heatmap(["tor", "hail", "wind"], fig_dir)
 

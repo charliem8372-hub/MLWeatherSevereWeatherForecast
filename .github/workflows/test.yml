@@ -25,4 +25,4 @@ jobs:
       - name: Type check
         run: uv run mypy src/
       - name: Test
-        run: uv run pytest tests/ -v --cov=src/nadocast_clone --cov-report=term-missing
+        run: uv run pytest tests/ -v --cov=src/ml_severe_weather_forecast --cov-report=term-missing

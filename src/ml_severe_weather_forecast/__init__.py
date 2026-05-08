@@ -1,4 +1,4 @@
-"""Nadocast-style severe-weather ML forecaster."""
+"""ML severe-weather forecaster (CONUS, XGBoost on HRRR)."""
 
 from __future__ import annotations
 

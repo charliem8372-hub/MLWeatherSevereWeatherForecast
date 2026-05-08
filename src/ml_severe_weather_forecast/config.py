@@ -13,7 +13,7 @@ HAZARDS = ("tornado", "hail", "wind")
 class Settings(BaseSettings):
     """Project-wide configuration."""
 
-    model_config = SettingsConfigDict(env_prefix="NADOCAST_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="MLSWF_", env_file=".env", extra="ignore")
 
     project_root: Path = Field(default_factory=Path.cwd)
     data_dir: Path = Field(default_factory=lambda: Path.cwd() / "data")
