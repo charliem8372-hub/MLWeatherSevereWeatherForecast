@@ -1,0 +1,4 @@
+# tests/fixtures/sample_lsr.csv
+om,yr,mo,dy,date,time,tz,st,stf,stn,mag,inj,fat,loss,closs,slat,slon,elat,elon,len,wid,fc
+1,2023,5,15,2023-05-15,180000,3,OK,40,0,2,0,0,0,0,35.225,-97.440,35.230,-97.430,0.5,100,0
+2,2023,5,15,2023-05-15,200000,3,KS,20,0,1,0,0,0,0,38.500,-97.000,0,0,0,0,0
