@@ -102,3 +102,26 @@ def build_grid() -> Grid:
         lats=lats_flat,
         lons=lons_flat,
     )
+
+
+_FWD: Transformer | None = None
+
+
+def _fwd() -> Transformer:
+    global _FWD
+    if _FWD is None:
+        _FWD = Transformer.from_crs(CRS.from_epsg(4326), lcc_crs(), always_xy=True)
+    return _FWD
+
+
+def latlon_to_cell_id(lat: float, lon: float, grid: Grid) -> str | None:
+    """Look up the cell ID containing a (lat, lon) point. Returns None if outside the grid."""
+    x, y = _fwd().transform(lon, lat)
+    dx_m = settings.grid_dx_km * 1000.0
+    x_min = grid.x_centers.min() - (int(grid.i_index.min()) + 0.5) * dx_m
+    y_min = grid.y_centers.min() - (int(grid.j_index.min()) + 0.5) * dx_m
+    i = int(np.floor((x - x_min) / dx_m))
+    j = int(np.floor((y - y_min) / dx_m))
+    target = f"c_{i:03d}_{j:03d}"
+    matches = np.where(grid.cell_ids == target)[0]
+    return target if matches.size else None
