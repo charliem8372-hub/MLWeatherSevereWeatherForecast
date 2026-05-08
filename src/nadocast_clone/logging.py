@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 from pathlib import Path
+from typing import cast
 
 import structlog
 
@@ -27,7 +28,7 @@ def configure_logging(stage: str, log_dir: Path | None = None) -> structlog.Boun
         logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
         cache_logger_on_first_use=True,
     )
-    log = structlog.get_logger().bind(stage=stage)
+    log = cast(structlog.BoundLogger, structlog.get_logger().bind(stage=stage))
     if log_dir is not None:
         log_dir.mkdir(parents=True, exist_ok=True)
     return log
