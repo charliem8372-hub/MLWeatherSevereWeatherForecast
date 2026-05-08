@@ -3,7 +3,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from ml_severe_weather_forecast.data.reports import dedup_reports, parse_spc_csv
+from ml_severe_weather_forecast.data.reports import (
+    apply_severity_filters,
+    dedup_reports,
+    parse_spc_csv,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "sample_lsr.csv"
 
@@ -42,3 +46,95 @@ def test_dedup_does_not_chain_eliminate_through_dead_neighbors() -> None:
     out = dedup_reports(df)
     mags = sorted(out["magnitude"].tolist())
     assert mags == [5, 10], f"expected to keep X(10) and B(5); got {mags}"
+
+
+def _make_df(rows: list[dict]) -> pd.DataFrame:
+    return pd.DataFrame(rows)
+
+
+def test_severity_filter_drops_subsevere_hail() -> None:
+    df = _make_df(
+        [
+            {
+                "event_time_utc": datetime(2023, 5, 15, tzinfo=UTC),
+                "lat": 35.0,
+                "lon": -97.0,
+                "hazard": "hail",
+                "magnitude": 0.75,
+            },
+            {
+                "event_time_utc": datetime(2023, 5, 15, tzinfo=UTC),
+                "lat": 35.0,
+                "lon": -97.0,
+                "hazard": "hail",
+                "magnitude": 1.0,
+            },
+            {
+                "event_time_utc": datetime(2023, 5, 15, tzinfo=UTC),
+                "lat": 35.0,
+                "lon": -97.0,
+                "hazard": "hail",
+                "magnitude": 2.5,
+            },
+        ]
+    )
+    out = apply_severity_filters(df)
+    assert len(out) == 2
+    assert (out["magnitude"] >= 1.0).all()
+
+
+def test_severity_filter_keeps_all_tornadoes() -> None:
+    df = _make_df(
+        [
+            {
+                "event_time_utc": datetime(2023, 5, 15, tzinfo=UTC),
+                "lat": 35.0,
+                "lon": -97.0,
+                "hazard": "tor",
+                "magnitude": 0,
+            },
+            {
+                "event_time_utc": datetime(2023, 5, 15, tzinfo=UTC),
+                "lat": 35.0,
+                "lon": -97.0,
+                "hazard": "tor",
+                "magnitude": -1,
+            },
+        ]
+    )
+    out = apply_severity_filters(df)
+    assert len(out) == 2
+
+
+def test_dedup_collapses_close_in_space_and_time() -> None:
+    df = _make_df(
+        [
+            {
+                "event_time_utc": datetime(2023, 5, 15, 18, 0, tzinfo=UTC),
+                "lat": 35.000,
+                "lon": -97.000,
+                "hazard": "tor",
+                "magnitude": 0,
+            },
+            {
+                "event_time_utc": datetime(2023, 5, 15, 18, 2, tzinfo=UTC),
+                "lat": 35.005,
+                "lon": -97.005,
+                "hazard": "tor",
+                "magnitude": 2,
+            },
+            {
+                "event_time_utc": datetime(2023, 5, 15, 23, 0, tzinfo=UTC),
+                "lat": 35.000,
+                "lon": -97.000,
+                "hazard": "tor",
+                "magnitude": 0,
+            },
+        ]
+    )
+    out = dedup_reports(df)
+    assert len(out) == 2
+    # The kept "early" report should be the higher-magnitude one.
+    early = out[out["event_time_utc"] < datetime(2023, 5, 15, 20, tzinfo=UTC)]
+    assert len(early) == 1
+    assert early.iloc[0]["magnitude"] == 2
