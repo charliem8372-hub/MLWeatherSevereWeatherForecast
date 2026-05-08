@@ -1,6 +1,6 @@
 # nadocast-clone
 
-A research-quality reproduction of [Nadocast](http://nadocast.com)'s methodology: probabilistic 24-hour CONUS severe-weather forecasts (tornado, hail, wind) using XGBoost on HRRR forecast fields, verified against SPC storm reports.
+A research-quality reproduction of [Nadocast](https://nadocast.com)'s methodology: probabilistic 24-hour CONUS severe-weather forecasts (tornado, hail, wind) using XGBoost on HRRR forecast fields, verified against SPC storm reports.
 
 **Status:** in development. See `docs/superpowers/specs/2026-05-07-nadocast-clone-design.md` for the full spec.
 
@@ -21,6 +21,8 @@ Each stage is idempotent; data flows via Parquet under `data/`.
 
 ## Reproducing the verification report
 
+> **Not yet implemented.** The commands below describe the eventual end-to-end pipeline. They become available as the implementation plan progresses (see `docs/superpowers/plans/2026-05-07-nadocast-clone.md`).
+
 ```bash
 uv run nadocast download hrrr        --start 2022-04-01 --end 2024-07-31
 uv run nadocast download reports     --start 2010 --end 2024
@@ -38,10 +40,11 @@ Ryzen 7 5800X / 32 GB DDR4 / RTX 4070 SUPER / 500+ GB free NVMe.
 
 ## Conda fallback
 
-If `uv sync` fails on `cfgrib`/`eccodes` (typically Windows-specific), use:
+If `uv sync` fails on `cfgrib` or `eccodes` (most likely on platforms without pre-built wheels), install those two packages from conda-forge and continue using `uv` for everything else:
 
 ```bash
-conda env create -f environment.yml
-conda activate nadocast-clone
-pip install -e .
+conda install -c conda-forge cfgrib eccodes
+uv sync
 ```
+
+Then drop `cfgrib` and `eccodes` from `pyproject.toml`'s `dependencies` list so `uv` doesn't try to reinstall them.
