@@ -6,6 +6,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
+import numpy as np
 import pandas as pd
 
 SPC_BASE = "https://www.spc.noaa.gov/wcm"
@@ -34,9 +35,16 @@ _TZ_OFFSET_HOURS = {3: 6, 9: 0}  # 3=CST, 9=GMT — SPC uses these in `tz`
 
 
 def _row_to_utc(row: pd.Series) -> datetime:
+    """Convert an SPC row's local-tz event time to UTC.
+
+    SPC stores local time in (yr, mo, dy, time) and a timezone code in `tz`
+    (3=CST, 9=GMT). The local→UTC offset is added after constructing the
+    datetime; the `tzinfo=UTC` tag is incidental — the constructed value
+    holds local time, not UTC.
+    """
     tz = int(row["tz"])
     offset_hours = _TZ_OFFSET_HOURS.get(tz, 6)
-    local = datetime(
+    naive_local = datetime(
         int(row["yr"]),
         int(row["mo"]),
         int(row["dy"]),
@@ -45,7 +53,7 @@ def _row_to_utc(row: pd.Series) -> datetime:
         int(str(row["time"]).zfill(6)[4:6]),
         tzinfo=UTC,
     )
-    return local + timedelta(hours=offset_hours)
+    return naive_local + timedelta(hours=offset_hours)
 
 
 def parse_spc_csv(path: Path, hazard: str) -> pd.DataFrame:
@@ -102,7 +110,7 @@ def dedup_reports(df: pd.DataFrame) -> pd.DataFrame:
     for _hazard, sub in df.groupby("hazard", sort=False):
         if len(sub) < 2:
             continue
-        rad = sub[["lat", "lon"]].to_numpy() * (3.141592653589793 / 180.0)
+        rad = sub[["lat", "lon"]].to_numpy() * (np.pi / 180.0)
         tree = BallTree(rad, metric="haversine")
         radius_rad = 16093.4 / 6_371_000.0  # 10 miles in radians on Earth
         idxs = tree.query_radius(rad, r=radius_rad)
@@ -113,6 +121,8 @@ def dedup_reports(df: pd.DataFrame) -> pd.DataFrame:
                 if n == i:
                     continue
                 gi, gn = sub.index[i], sub.index[n]
+                if not keep_mask.at[gn]:  # already dropped — skip
+                    continue
                 t_i = df.at[gi, "event_time_utc"]
                 t_n = df.at[gn, "event_time_utc"]
                 if abs((t_i - t_n).total_seconds()) > 300:
