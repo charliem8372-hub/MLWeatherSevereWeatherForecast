@@ -1,7 +1,9 @@
+from pathlib import Path
+
 import numpy as np
 
 from ml_severe_weather_forecast.config import settings
-from ml_severe_weather_forecast.data.grid import build_grid, latlon_to_cell_id
+from ml_severe_weather_forecast.data.grid import build_grid, latlon_to_cell_id, load_grid, save_grid
 
 
 def test_build_grid_has_expected_cell_count() -> None:
@@ -43,3 +45,13 @@ def test_cell_center_roundtrip() -> None:
     idx = list(grid.cell_ids).index(cell_id)
     same_cell = latlon_to_cell_id(grid.lats[idx], grid.lons[idx], grid)
     assert same_cell == cell_id
+
+
+def test_grid_save_load_roundtrip(tmp_path: Path) -> None:
+    grid = build_grid()
+    path = tmp_path / "grid.parquet"
+    save_grid(grid, path)
+    loaded = load_grid(path)
+    np.testing.assert_array_equal(loaded.cell_ids, grid.cell_ids)
+    np.testing.assert_allclose(loaded.lats, grid.lats)
+    np.testing.assert_allclose(loaded.lons, grid.lons)

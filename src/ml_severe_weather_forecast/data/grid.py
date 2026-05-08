@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import cached_property, lru_cache
+from pathlib import Path
 
 import numpy as np
+import pandas as pd
 from pyproj import CRS, Transformer
 
 from ml_severe_weather_forecast.config import settings
@@ -120,3 +122,32 @@ def latlon_to_cell_id(lat: float, lon: float, grid: Grid) -> str | None:
     target = f"c_{i:03d}_{j:03d}"
     matches = np.where(grid.cell_ids == target)[0]
     return target if matches.size else None
+
+
+def save_grid(grid: Grid, path: Path) -> None:
+    df = pd.DataFrame(
+        {
+            "cell_id": grid.cell_ids.astype(str),
+            "i_index": grid.i_index,
+            "j_index": grid.j_index,
+            "x_center_m": grid.x_centers,
+            "y_center_m": grid.y_centers,
+            "lat": grid.lats,
+            "lon": grid.lons,
+        }
+    )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    df.to_parquet(path, index=False)
+
+
+def load_grid(path: Path) -> Grid:
+    df = pd.read_parquet(path)
+    return Grid(
+        cell_ids=df["cell_id"].to_numpy(dtype=object),
+        i_index=df["i_index"].to_numpy(dtype=np.int32),
+        j_index=df["j_index"].to_numpy(dtype=np.int32),
+        x_centers=df["x_center_m"].to_numpy(dtype=np.float64),
+        y_centers=df["y_center_m"].to_numpy(dtype=np.float64),
+        lats=df["lat"].to_numpy(dtype=np.float64),
+        lons=df["lon"].to_numpy(dtype=np.float64),
+    )
