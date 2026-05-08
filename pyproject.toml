@@ -61,6 +61,9 @@ target-version = "py312"
 select = ["E", "F", "I", "N", "UP", "B", "SIM", "RUF"]
 ignore = ["E501"]
 
+[tool.ruff.lint.isort]
+known-first-party = ["nadocast_clone"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
