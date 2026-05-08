@@ -133,3 +133,30 @@ def dedup_reports(df: pd.DataFrame) -> pd.DataFrame:
                 else:
                     keep_mask.at[gn] = False
     return df.loc[keep_mask].reset_index(drop=True)
+
+
+def build_reports(
+    years: list[int],
+    src_dir: Path,
+    out_dir: Path,
+    hazards: tuple[str, ...] = HAZARD_VALID,
+) -> list[Path]:
+    """For each year, parse all hazard CSVs, filter, dedup, write one Parquet."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for year in years:
+        frames: list[pd.DataFrame] = []
+        for hazard in hazards:
+            csv = src_dir / str(year) / HAZARD_TO_FILE[hazard].format(year=year)
+            if not csv.exists():
+                continue
+            frames.append(parse_spc_csv(csv, hazard=hazard))
+        if not frames:
+            continue
+        df = pd.concat(frames, ignore_index=True)
+        df = apply_severity_filters(df)
+        df = dedup_reports(df)
+        path = out_dir / f"{year}.parquet"
+        df.to_parquet(path, index=False)
+        written.append(path)
+    return written

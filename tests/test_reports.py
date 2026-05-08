@@ -5,6 +5,7 @@ import pandas as pd
 
 from ml_severe_weather_forecast.data.reports import (
     apply_severity_filters,
+    build_reports,
     dedup_reports,
     parse_spc_csv,
 )
@@ -138,3 +139,15 @@ def test_dedup_collapses_close_in_space_and_time() -> None:
     early = out[out["event_time_utc"] < datetime(2023, 5, 15, 20, tzinfo=UTC)]
     assert len(early) == 1
     assert early.iloc[0]["magnitude"] == 2
+
+
+def test_build_reports_writes_combined_parquet(tmp_path: Path) -> None:
+    """Given a directory with per-year/per-hazard CSVs, build_reports collapses to one Parquet/year."""
+    src = tmp_path / "src"
+    (src / "2023").mkdir(parents=True)
+    (src / "2023" / "2023_torn.csv").write_text(FIXTURE.read_text())
+    out = tmp_path / "out"
+    paths = build_reports(years=[2023], src_dir=src, out_dir=out, hazards=("tor",))
+    assert len(paths) == 1
+    df = pd.read_parquet(paths[0])
+    assert set(df.columns) >= {"event_time_utc", "lat", "lon", "hazard", "magnitude"}

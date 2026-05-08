@@ -25,7 +25,13 @@ def download_reports_cmd(
     force: bool = typer.Option(False, help="Re-download even if cached."),
 ) -> None:
     """Download SPC severe-weather DB CSVs for tornado/hail/wind."""
-    from ml_severe_weather_forecast.data.reports import HAZARD_VALID, download_spc_year
+    if start > end:
+        raise typer.BadParameter(f"--start ({start}) must be <= --end ({end})")
+    from ml_severe_weather_forecast.data.reports import (
+        HAZARD_VALID,
+        build_reports,
+        download_spc_year,
+    )
 
     target_dir = dest or settings.reports_dir
     typer.echo(f"Downloading SPC reports {start}-{end} -> {target_dir}")
@@ -33,6 +39,10 @@ def download_reports_cmd(
         for hazard in HAZARD_VALID:
             path = download_spc_year(year, hazard, target_dir, force=force)
             typer.echo(f"  {year} {hazard}: {path}")
+    typer.echo("Building per-year Parquet artifacts...")
+    parquets = build_reports(list(range(start, end + 1)), target_dir, target_dir)
+    for p in parquets:
+        typer.echo(f"  {p}")
 
 
 if __name__ == "__main__":
