@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import cached_property
+from functools import cached_property, lru_cache
 
 import numpy as np
 from pyproj import CRS, Transformer
@@ -11,7 +11,8 @@ from pyproj import CRS, Transformer
 from ml_severe_weather_forecast.config import settings
 
 
-def _lcc_crs() -> CRS:
+@lru_cache(maxsize=1)
+def lcc_crs() -> CRS:
     return CRS.from_proj4(
         f"+proj=lcc +lat_0={settings.lcc_lat_0} +lon_0={settings.lcc_lon_0} "
         f"+lat_1={settings.lcc_lat_1} +lat_2={settings.lcc_lat_2} "
@@ -38,7 +39,7 @@ class Grid:
 
 def build_grid() -> Grid:
     """Construct the canonical 50 km CONUS grid."""
-    crs_lcc = _lcc_crs()
+    crs_lcc = lcc_crs()
     crs_geo = CRS.from_epsg(4326)
     fwd = Transformer.from_crs(crs_geo, crs_lcc, always_xy=True)
     inv = Transformer.from_crs(crs_lcc, crs_geo, always_xy=True)
@@ -60,6 +61,10 @@ def build_grid() -> Grid:
 
     nx = round((x_max - x_min) / dx_m)
     ny = round((y_max - y_min) / dx_m)
+    assert nx < 1000 and ny < 1000, (
+        f"cell-ID format c_iii_jjj only supports indices < 1000 "
+        f"(got nx={nx}, ny={ny}); widen the format or shrink the grid"
+    )
 
     # Cell centers (i, j) where i is column (x), j is row (y)
     ii, jj = np.meshgrid(np.arange(nx), np.arange(ny), indexing="xy")

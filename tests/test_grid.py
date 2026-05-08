@@ -1,5 +1,6 @@
 import numpy as np
 
+from ml_severe_weather_forecast.config import settings
 from ml_severe_weather_forecast.data.grid import build_grid
 
 
@@ -16,5 +17,5 @@ def test_grid_has_unique_cell_ids() -> None:
 
 def test_grid_centers_are_lat_lon() -> None:
     grid = build_grid()
-    assert np.all((grid.lats >= 23) & (grid.lats <= 51))
-    assert np.all((grid.lons >= -126) & (grid.lons <= -64))
+    assert np.all((grid.lats >= settings.grid_lat_min) & (grid.lats <= settings.grid_lat_max))
+    assert np.all((grid.lons >= settings.grid_lon_min) & (grid.lons <= settings.grid_lon_max))
