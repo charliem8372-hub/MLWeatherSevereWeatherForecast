@@ -104,14 +104,9 @@ def build_grid() -> Grid:
     )
 
 
-_FWD: Transformer | None = None
-
-
+@lru_cache(maxsize=1)
 def _fwd() -> Transformer:
-    global _FWD
-    if _FWD is None:
-        _FWD = Transformer.from_crs(CRS.from_epsg(4326), lcc_crs(), always_xy=True)
-    return _FWD
+    return Transformer.from_crs(CRS.from_epsg(4326), lcc_crs(), always_xy=True)
 
 
 def latlon_to_cell_id(lat: float, lon: float, grid: Grid) -> str | None:
