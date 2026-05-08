@@ -1,3 +1,4 @@
+"""Smoke test — package imports and CLI help work."""
 from typer.testing import CliRunner
 
 from nadocast_clone.cli import app

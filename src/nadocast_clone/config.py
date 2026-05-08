@@ -14,8 +14,8 @@ class Settings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="NADOCAST_", env_file=".env", extra="ignore")
 
-    project_root: Path = Field(default=Path.cwd())
-    data_dir: Path = Field(default=Path.cwd() / "data")
+    project_root: Path = Field(default_factory=Path.cwd)
+    data_dir: Path = Field(default_factory=lambda: Path.cwd() / "data")
 
     # Grid (50 km Lambert Conformal)
     grid_dx_km: float = 50.0

@@ -9,7 +9,12 @@ import structlog
 
 
 def configure_logging(stage: str, log_dir: Path | None = None) -> structlog.BoundLogger:
-    """Configure structlog with JSON output to file + pretty to stderr."""
+    """Configure structlog with stage-bound logger and pretty output to stderr.
+
+    If ``log_dir`` is provided, ensures the directory exists so future tasks
+    can attach a file sink there. The directory is currently unused beyond
+    that — file logging will be added in a later task.
+    """
     processors: list[structlog.types.Processor] = [
         structlog.contextvars.merge_contextvars,
         structlog.processors.add_log_level,
