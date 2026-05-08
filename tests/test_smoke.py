@@ -1,7 +1,7 @@
 """Smoke test — package imports and CLI help work."""
-from typer.testing import CliRunner
 
 from nadocast_clone.cli import app
+from typer.testing import CliRunner
 
 
 def test_cli_help_runs() -> None:

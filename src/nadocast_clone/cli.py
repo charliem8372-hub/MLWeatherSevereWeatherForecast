@@ -1,4 +1,5 @@
 """Typer CLI entry point. Subcommands are added in later tasks."""
+
 from __future__ import annotations
 
 import typer
