@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -70,3 +71,25 @@ def label_cycle(
         out[f"{hazard}_max_magnitude"] = magmax_col
 
     return out
+
+
+def build_year_labels(
+    year: int,
+    cycles: list[datetime],
+    grid: Grid,
+    reports_path: Path,
+    out_dir: Path,
+    hazards: tuple[str, ...] = ("tor", "hail", "wind"),
+) -> Path:
+    """Generate labels for all cycles in a year and write one Parquet."""
+    reports = pd.read_parquet(reports_path)
+    if reports["event_time_utc"].dt.tz is None:
+        reports["event_time_utc"] = reports["event_time_utc"].dt.tz_localize(UTC)
+    parts: list[pd.DataFrame] = []
+    for cycle in cycles:
+        parts.append(label_cycle(grid, cycle_init_utc=cycle, reports=reports, hazards=hazards))
+    df = pd.concat(parts, ignore_index=True)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{year}.parquet"
+    df.to_parquet(path, index=False)
+    return path
