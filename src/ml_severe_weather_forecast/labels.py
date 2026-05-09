@@ -31,9 +31,12 @@ def label_cycle(
       - {hazard} (0/1) for each hazard
       - {hazard}_event_count, {hazard}_max_magnitude
     """
+    if cycle_init_utc.tzinfo is None:
+        raise ValueError("cycle_init_utc must be timezone-aware (UTC)")
     if reports["event_time_utc"].dt.tz is None:
         raise ValueError("reports['event_time_utc'] must be timezone-aware (UTC)")
-    radius_km = radius_km or settings.label_radius_km
+    if radius_km is None:
+        radius_km = settings.label_radius_km
     radius_rad = (radius_km * 1000.0) / EARTH_RADIUS_M
     window_end = cycle_init_utc + timedelta(hours=forecast_window_hours)
 

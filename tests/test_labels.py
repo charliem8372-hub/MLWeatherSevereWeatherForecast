@@ -7,7 +7,9 @@ from ml_severe_weather_forecast.labels import label_cycle
 
 
 def _reports_df(rows: list[dict]) -> pd.DataFrame:
-    return pd.DataFrame(rows)
+    df = pd.DataFrame(rows)
+    df["event_time_utc"] = pd.to_datetime(df["event_time_utc"], utc=True)
+    return df
 
 
 def test_known_tornado_labels_its_cell() -> None:
