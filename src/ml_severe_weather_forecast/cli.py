@@ -45,5 +45,39 @@ def download_reports_cmd(
         typer.echo(f"  {p}")
 
 
+@app.command("label")
+def label_cmd(
+    year: int = typer.Option(..., help="Year to label."),
+) -> None:
+    """Generate per-cycle labels for a given year using cached reports."""
+    from datetime import UTC, datetime, timedelta
+
+    from ml_severe_weather_forecast.data.grid import build_grid
+    from ml_severe_weather_forecast.labels import build_year_labels
+
+    grid = build_grid()
+    reports_path = settings.reports_dir / f"{year}.parquet"
+    if not reports_path.exists():
+        raise typer.BadParameter(
+            f"missing reports parquet: {reports_path}. Run `mlswf download reports` first."
+        )
+
+    season_start = datetime(year, settings.season_month_start, 1, tzinfo=UTC)
+    # Last day of season_month_end:
+    if settings.season_month_end == 12:
+        season_end = datetime(year + 1, 1, 1, tzinfo=UTC)
+    else:
+        season_end = datetime(year, settings.season_month_end + 1, 1, tzinfo=UTC)
+
+    cycles: list[datetime] = []
+    cur = season_start.replace(hour=settings.hrrr_cycle_hour)
+    while cur < season_end:
+        cycles.append(cur)
+        cur = cur + timedelta(days=1)
+
+    out = build_year_labels(year, cycles, grid, reports_path, settings.labels_dir)
+    typer.echo(f"Wrote {out}")
+
+
 if __name__ == "__main__":
     app()
