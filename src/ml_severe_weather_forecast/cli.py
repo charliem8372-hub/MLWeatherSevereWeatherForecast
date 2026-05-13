@@ -79,5 +79,42 @@ def label_cmd(
     typer.echo(f"Wrote {out}")
 
 
+@download_app.command("hrrr")
+def download_hrrr_cmd(
+    start: str = typer.Option(..., help="First cycle date YYYY-MM-DD."),
+    end: str = typer.Option(..., help="Last cycle date YYYY-MM-DD (inclusive)."),
+) -> None:
+    """Download 12z HRRR cycles between start and end (inclusive)."""
+    from datetime import UTC, datetime, timedelta
+
+    from ml_severe_weather_forecast.data.hrrr import download_cycle
+
+    try:
+        s = datetime.fromisoformat(start).replace(tzinfo=UTC, hour=settings.hrrr_cycle_hour)
+        e = datetime.fromisoformat(end).replace(tzinfo=UTC, hour=settings.hrrr_cycle_hour)
+    except ValueError as exc:
+        raise typer.BadParameter(f"Dates must be YYYY-MM-DD: {exc}") from exc
+
+    if s > e:
+        raise typer.BadParameter(f"--start ({start}) must be <= --end ({end})")
+
+    typer.echo(
+        f"Downloading HRRR 12z cycles {start}..{end} "
+        f"(months {settings.season_month_start}-{settings.season_month_end}) "
+        f"-> {settings.hrrr_dir}"
+    )
+    cycles_downloaded = 0
+    total_files = 0
+    cur = s
+    while cur <= e:
+        if settings.season_month_start <= cur.month <= settings.season_month_end:
+            paths = download_cycle(cur, settings.hrrr_forecast_hours, cache_dir=settings.hrrr_dir)
+            typer.echo(f"  {cur.date()}: {len(paths)} files")
+            cycles_downloaded += 1
+            total_files += len(paths)
+        cur = cur + timedelta(days=1)
+    typer.echo(f"Done: {cycles_downloaded} cycles, {total_files} files")
+
+
 if __name__ == "__main__":
     app()
