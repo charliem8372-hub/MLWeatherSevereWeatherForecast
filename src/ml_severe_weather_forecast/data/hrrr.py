@@ -128,10 +128,10 @@ _VAR_TO_FILTER: dict[str, dict[str, object]] = {
     "LFTX": {"shortName": "lftx"},
     "SRH_0_1km": {"shortName": "hlcy", "topLevel": 1000, "bottomLevel": 0},
     "SRH_0_3km": {"shortName": "hlcy", "topLevel": 3000, "bottomLevel": 0},
-    "USHR_0_6km": {"shortName": "vucsh", "topLevel": 6000, "bottomLevel": 0},
-    "VSHR_0_6km": {"shortName": "vvcsh", "topLevel": 6000, "bottomLevel": 0},
-    "USHR_0_1km": {"shortName": "vucsh", "topLevel": 1000, "bottomLevel": 0},
-    "VSHR_0_1km": {"shortName": "vvcsh", "topLevel": 1000, "bottomLevel": 0},
+    "USHR_0_6km": {"shortName": "vucsh", "topLevel": 0, "bottomLevel": 6000},
+    "VSHR_0_6km": {"shortName": "vvcsh", "topLevel": 0, "bottomLevel": 6000},
+    "USHR_0_1km": {"shortName": "vucsh", "topLevel": 0, "bottomLevel": 1000},
+    "VSHR_0_1km": {"shortName": "vvcsh", "topLevel": 0, "bottomLevel": 1000},
     "PWAT": {"shortName": "pwat"},
     "T2M": {"shortName": "2t"},
     "TD2M": {"shortName": "2d"},
@@ -143,6 +143,7 @@ _VAR_TO_FILTER: dict[str, dict[str, object]] = {
     "HGT_500": {"shortName": "gh", "level": 500, "typeOfLevel": "isobaricInhPa"},
     "U_500": {"shortName": "u", "level": 500, "typeOfLevel": "isobaricInhPa"},
     "V_500": {"shortName": "v", "level": 500, "typeOfLevel": "isobaricInhPa"},
+    # NOTE: not in wrfsfcf06; move to wrfprsf in a follow-up
     "ABSV_500": {"shortName": "absv", "level": 500, "typeOfLevel": "isobaricInhPa"},
     "U_250": {"shortName": "u", "level": 250, "typeOfLevel": "isobaricInhPa"},
     "V_250": {"shortName": "v", "level": 250, "typeOfLevel": "isobaricInhPa"},
@@ -155,8 +156,19 @@ _VAR_TO_FILTER: dict[str, dict[str, object]] = {
         "topLevel": 5000,
         "bottomLevel": 2000,
     },
-    "MAXWIND_10m": {"shortName": "maxuw"},
-    "MAXREFD_1km": {"shortName": "maxref"},
+    # MAXWIND and MAXREFD are also NCEP-local codes; identify by category/number.
+    "MAXWIND_10m": {
+        "parameterCategory": 2,
+        "parameterNumber": 222,
+        "typeOfLevel": "heightAboveGround",
+        "level": 10,
+    },
+    "MAXREFD_1km": {
+        "parameterCategory": 16,
+        "parameterNumber": 198,
+        "typeOfLevel": "heightAboveGround",
+        "level": 1000,
+    },
     "MAXHAIL": {"shortName": "hail"},
 }
 
@@ -186,9 +198,20 @@ def extract_variables_to_dataset(grib_path: Path) -> xr.Dataset:
         da = da.reset_coords(drop_coords, drop=True)
         out_vars[name] = da.rename(name)
         if ref_lat is None:
-            ref_lat = ds["latitude"]
-            ref_lon = ds["longitude"]
+            ref_lat = ds["latitude"].reset_coords(
+                [c for c in ds["latitude"].coords if c not in ("latitude", "longitude")],
+                drop=True,
+            )
+            ref_lon = ds["longitude"].reset_coords(
+                [c for c in ds["longitude"].coords if c not in ("latitude", "longitude")],
+                drop=True,
+            )
     if not out_vars:
         raise RuntimeError(f"No variables extracted from {grib_path}")
     assert ref_lat is not None and ref_lon is not None
+    expected = set(_VAR_TO_FILTER)
+    got = set(out_vars)
+    missing = sorted(expected - got)
+    if missing:
+        log.warning("hrrr.extract.missing_vars", count=len(missing), missing=missing)
     return xr.Dataset(out_vars, coords={"latitude": ref_lat, "longitude": ref_lon})

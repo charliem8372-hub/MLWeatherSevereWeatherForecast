@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from ml_severe_weather_forecast.data.hrrr import (
+    _VAR_TO_FILTER,
     HRRR_VARIABLES,
     extract_variables_to_dataset,
     hrrr_variable_search_string,
@@ -45,9 +46,22 @@ def test_search_string_is_valid_regex() -> None:
     re.compile(hrrr_variable_search_string())
 
 
+def test_var_to_filter_covers_all_variables() -> None:
+    """Drift guard: every canonical variable must have a cfgrib filter spec."""
+    assert set(_VAR_TO_FILTER) == set(HRRR_VARIABLES)
+
+
 @pytest.mark.skipif(not FIXTURE.exists(), reason="tiny_hrrr.grib2 fixture not present")
 def test_extract_variables_returns_dataset() -> None:
     ds = extract_variables_to_dataset(FIXTURE)
-    for v in ("MLCAPE", "SRH_0_3km", "MXUPHL_2_5km"):
+    # Headline convective variables present
+    for v in ("MLCAPE", "MUCAPE", "SRH_0_3km", "MXUPHL_2_5km"):
         assert v in ds.data_vars
-    assert ds["MLCAPE"].ndim == 2
+    # Wind shear variables present (regression guard for filter-key bug)
+    for v in ("USHR_0_6km", "VSHR_0_6km", "USHR_0_1km", "VSHR_0_1km"):
+        assert v in ds.data_vars
+    # MLCAPE and MUCAPE coexist (verifies reset_coords logic)
+    assert ds["MLCAPE"].dims == ds["MUCAPE"].dims
+    # 2D Lambert grid
+    assert ds["latitude"].ndim == 2
+    assert ds["latitude"].shape == ds["MLCAPE"].shape
