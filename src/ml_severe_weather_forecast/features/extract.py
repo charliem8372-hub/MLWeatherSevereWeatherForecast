@@ -50,3 +50,27 @@ def temporal_aggregate(
         out[f"{col}_fhr_max"] = np.nanmax(stacked, axis=1)
 
     return out
+
+
+def snapshot_anchors(
+    frames: Sequence[pd.DataFrame],
+    fhrs: Sequence[int],
+    instantaneous_vars: Sequence[str],
+) -> pd.DataFrame:
+    """Pull per-cell values at specific forecast hours (e.g., f06, f12, f18) for each variable.
+
+    `frames` is indexed by forecast hour starting at f00; `fhrs` selects which hours to keep.
+    """
+    if not frames:
+        raise ValueError("frames must be non-empty")
+    out = pd.DataFrame({"cell_id": frames[0]["cell_id"]})
+    for var in instantaneous_vars:
+        for stat in ("max", "mean"):
+            col = f"{var}_{stat}"
+            if col not in frames[0].columns:
+                continue
+            for fhr in fhrs:
+                if fhr < 0 or fhr >= len(frames):
+                    continue
+                out[f"{col}_f{fhr:02d}"] = frames[fhr][col].to_numpy(dtype=np.float32)
+    return out
