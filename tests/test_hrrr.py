@@ -1,6 +1,15 @@
 import re
+from pathlib import Path
 
-from ml_severe_weather_forecast.data.hrrr import HRRR_VARIABLES, hrrr_variable_search_string
+import pytest
+
+from ml_severe_weather_forecast.data.hrrr import (
+    HRRR_VARIABLES,
+    extract_variables_to_dataset,
+    hrrr_variable_search_string,
+)
+
+FIXTURE = Path(__file__).parent / "fixtures" / "tiny_hrrr.grib2"
 
 
 def test_hrrr_variable_list_complete() -> None:
@@ -34,3 +43,11 @@ def test_hourly_max_aggregate_is_max_only() -> None:
 def test_search_string_is_valid_regex() -> None:
     """A future variable with unescaped regex metachars would break Task 18 silently."""
     re.compile(hrrr_variable_search_string())
+
+
+@pytest.mark.skipif(not FIXTURE.exists(), reason="tiny_hrrr.grib2 fixture not present")
+def test_extract_variables_returns_dataset() -> None:
+    ds = extract_variables_to_dataset(FIXTURE)
+    for v in ("MLCAPE", "SRH_0_3km", "MXUPHL_2_5km"):
+        assert v in ds.data_vars
+    assert ds["MLCAPE"].ndim == 2

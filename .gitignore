@@ -17,6 +17,9 @@ data/*
 !data/.gitkeep
 docs/verification_report.html
 
+# cfgrib's per-process GRIB index cache (regenerated on read)
+*.grib2.*.idx
+
 # Notebook checkpoints
 .ipynb_checkpoints/
 *-checkpoint.ipynb

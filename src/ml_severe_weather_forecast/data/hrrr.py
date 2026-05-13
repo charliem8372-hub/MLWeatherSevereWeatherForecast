@@ -8,6 +8,7 @@ from datetime import datetime
 from pathlib import Path
 
 import structlog
+import xarray as xr
 
 log = structlog.get_logger(__name__)
 
@@ -104,3 +105,90 @@ def download_cycle(
             continue
         paths.append(Path(path))
     return paths
+
+
+def _open_grib_subset(path: Path, filter_keys: dict[str, object]) -> xr.Dataset:
+    # Lazy import: cfgrib pulls in eccodes C bindings at import time, which we want
+    # to defer until a caller actually needs to read GRIB2 data.
+    import cfgrib
+
+    ds: xr.Dataset = cfgrib.open_dataset(
+        str(path),
+        backend_kwargs={"filter_by_keys": filter_keys, "errors": "ignore"},
+    )
+    return ds
+
+
+_VAR_TO_FILTER: dict[str, dict[str, object]] = {
+    "SBCAPE": {"shortName": "cape", "typeOfLevel": "surface"},
+    "MLCAPE": {"shortName": "cape", "typeOfLevel": "pressureFromGroundLayer", "topLevel": 9000},
+    "MUCAPE": {"shortName": "cape", "typeOfLevel": "pressureFromGroundLayer", "topLevel": 18000},
+    "SBCIN": {"shortName": "cin", "typeOfLevel": "surface"},
+    "MLCIN": {"shortName": "cin", "typeOfLevel": "pressureFromGroundLayer", "topLevel": 9000},
+    "LFTX": {"shortName": "lftx"},
+    "SRH_0_1km": {"shortName": "hlcy", "topLevel": 1000, "bottomLevel": 0},
+    "SRH_0_3km": {"shortName": "hlcy", "topLevel": 3000, "bottomLevel": 0},
+    "USHR_0_6km": {"shortName": "vucsh", "topLevel": 6000, "bottomLevel": 0},
+    "VSHR_0_6km": {"shortName": "vvcsh", "topLevel": 6000, "bottomLevel": 0},
+    "USHR_0_1km": {"shortName": "vucsh", "topLevel": 1000, "bottomLevel": 0},
+    "VSHR_0_1km": {"shortName": "vvcsh", "topLevel": 1000, "bottomLevel": 0},
+    "PWAT": {"shortName": "pwat"},
+    "T2M": {"shortName": "2t"},
+    "TD2M": {"shortName": "2d"},
+    "U10": {"shortName": "10u"},
+    "V10": {"shortName": "10v"},
+    "T_500": {"shortName": "t", "level": 500, "typeOfLevel": "isobaricInhPa"},
+    "T_700": {"shortName": "t", "level": 700, "typeOfLevel": "isobaricInhPa"},
+    "T_850": {"shortName": "t", "level": 850, "typeOfLevel": "isobaricInhPa"},
+    "HGT_500": {"shortName": "gh", "level": 500, "typeOfLevel": "isobaricInhPa"},
+    "U_500": {"shortName": "u", "level": 500, "typeOfLevel": "isobaricInhPa"},
+    "V_500": {"shortName": "v", "level": 500, "typeOfLevel": "isobaricInhPa"},
+    "ABSV_500": {"shortName": "absv", "level": 500, "typeOfLevel": "isobaricInhPa"},
+    "U_250": {"shortName": "u", "level": 250, "typeOfLevel": "isobaricInhPa"},
+    "V_250": {"shortName": "v", "level": 250, "typeOfLevel": "isobaricInhPa"},
+    "HLCY_LCL": {"shortName": "gh", "typeOfLevel": "adiabaticCondensation"},
+    # MXUPHL is in NCEP's local GRIB2 table (not in the standard eccodes table), so
+    # cfgrib decodes shortName as "unknown". Identify it by parameterCategory/Number.
+    "MXUPHL_2_5km": {
+        "parameterCategory": 7,
+        "parameterNumber": 199,
+        "topLevel": 5000,
+        "bottomLevel": 2000,
+    },
+    "MAXWIND_10m": {"shortName": "maxuw"},
+    "MAXREFD_1km": {"shortName": "maxref"},
+    "MAXHAIL": {"shortName": "hail"},
+}
+
+
+def extract_variables_to_dataset(grib_path: Path) -> xr.Dataset:
+    """Load all configured variables from one GRIB2 file into a single xarray Dataset.
+
+    Variables that fail to load (e.g., not present in this product) are skipped with a warning.
+    """
+    out_vars: dict[str, xr.DataArray] = {}
+    ref_lat: xr.DataArray | None = None
+    ref_lon: xr.DataArray | None = None
+    for name, filt in _VAR_TO_FILTER.items():
+        try:
+            ds = _open_grib_subset(grib_path, filt)
+        except Exception as exc:
+            log.warning("hrrr.extract.skip", var=name, error=str(exc))
+            continue
+        if not ds.data_vars:
+            log.warning("hrrr.extract.empty", var=name, filt=filt)
+            continue
+        # Pick the first data var (cfgrib sometimes returns the underlying GRIB shortName)
+        da = next(iter(ds.data_vars.values()))
+        # Drop non-grid scalar coords (e.g., "pressureFromGroundLayer"=9000 vs =18000)
+        # so MLCAPE and MUCAPE can coexist in the same Dataset.
+        drop_coords = [c for c in da.coords if c not in ("latitude", "longitude")]
+        da = da.reset_coords(drop_coords, drop=True)
+        out_vars[name] = da.rename(name)
+        if ref_lat is None:
+            ref_lat = ds["latitude"]
+            ref_lon = ds["longitude"]
+    if not out_vars:
+        raise RuntimeError(f"No variables extracted from {grib_path}")
+    assert ref_lat is not None and ref_lon is not None
+    return xr.Dataset(out_vars, coords={"latitude": ref_lat, "longitude": ref_lon})
