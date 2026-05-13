@@ -82,9 +82,10 @@ def download_cycle(
 ) -> list[Path]:
     """Download HRRR `wrfsfcf{FF}.grib2` files for one 12z cycle, subset by variable list.
 
-    Returns the local paths of downloaded files. Idempotent: skips files already present.
+    Returns the local paths of downloaded files. Herbie handles caching by save_dir,
+    so re-running on the same cycle reuses already-downloaded subsets.
     """
-    from herbie import Herbie
+    from herbie.core import Herbie
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     paths: list[Path] = []
@@ -97,7 +98,7 @@ def download_cycle(
             fxx=int(fxx),
             save_dir=cache_dir,
         )
-        path = h.download(searchString=search, verbose=False)
+        path = h.download(search=search, verbose=False)
         if path is None:
             log.warning("hrrr.download.none", cycle=cycle_init.isoformat(), fxx=fxx)
             continue
