@@ -7,8 +7,12 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
 import structlog
 import xarray as xr
+
+from ml_severe_weather_forecast.data.grid import Grid
 
 log = structlog.get_logger(__name__)
 
@@ -215,3 +219,63 @@ def extract_variables_to_dataset(grib_path: Path) -> xr.Dataset:
     if missing:
         log.warning("hrrr.extract.missing_vars", count=len(missing), missing=missing)
     return xr.Dataset(out_vars, coords={"latitude": ref_lat, "longitude": ref_lon})
+
+
+def _assign_hrrr_points_to_cells(ds: xr.Dataset, grid: Grid) -> np.ndarray:
+    """For each HRRR (lat, lon) point in `ds`, find the nearest grid cell index.
+
+    Returns an int array of shape (ny_hrrr * nx_hrrr,) — flattened, with values in [0, n_cells)
+    or -1 for points outside any cell.
+    """
+    from sklearn.neighbors import BallTree
+
+    lat = ds["latitude"].to_numpy().ravel()
+    lon = ds["longitude"].to_numpy().ravel()
+    lon = np.where(lon > 180, lon - 360, lon)
+    pts_rad = np.deg2rad(np.column_stack([lat, lon]))
+
+    cell_rad = np.deg2rad(np.column_stack([grid.lats, grid.lons]))
+    tree = BallTree(cell_rad, metric="haversine")
+    radius_rad = 35_000.0 / 6_371_000.0  # 35 km — covers half of 50 km cell diagonal
+    dist, idx = tree.query(pts_rad, k=1)
+    flat_idx: np.ndarray = idx.ravel()
+    flat_idx[(dist.ravel() > radius_rad)] = -1
+    return flat_idx
+
+
+def regrid_to_cells(ds: xr.Dataset, grid: Grid) -> pd.DataFrame:
+    """Aggregate each variable from HRRR's 3 km grid down to the 50 km cell grid.
+
+    For each variable, we compute the cell-wise `max` and (where applicable) `mean`
+    over the contained HRRR points.
+    """
+    cell_idx = _assign_hrrr_points_to_cells(ds, grid)
+    order = np.argsort(cell_idx, kind="stable")
+    sorted_cell_idx = cell_idx[order]
+    valid = sorted_cell_idx >= 0
+    sorted_valid_order = order[valid]
+    sorted_valid_idx = sorted_cell_idx[valid]
+    boundaries = np.concatenate(
+        [[0], np.cumsum(np.bincount(sorted_valid_idx, minlength=grid.n_cells))]
+    )
+
+    out_columns: dict[str, np.ndarray] = {"cell_id": grid.cell_ids}
+
+    for name, da in ds.data_vars.items():
+        flat = da.to_numpy().astype(np.float32).ravel()
+        spec = HRRR_VARIABLES.get(str(name))
+        var_max = np.full(grid.n_cells, np.nan, dtype=np.float32)
+        var_mean = np.full(grid.n_cells, np.nan, dtype=np.float32)
+        for c in range(grid.n_cells):
+            start, stop = boundaries[c], boundaries[c + 1]
+            if stop > start:
+                values = flat[sorted_valid_order[start:stop]]
+                values = values[~np.isnan(values)]
+                if values.size:
+                    var_max[c] = values.max()
+                    var_mean[c] = values.mean()
+        out_columns[f"{name}_max"] = var_max
+        if not (spec and spec.is_hourly_max):
+            out_columns[f"{name}_mean"] = var_mean
+
+    return pd.DataFrame(out_columns)

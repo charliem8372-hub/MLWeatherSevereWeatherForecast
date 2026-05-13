@@ -3,11 +3,13 @@ from pathlib import Path
 
 import pytest
 
+from ml_severe_weather_forecast.data.grid import build_grid
 from ml_severe_weather_forecast.data.hrrr import (
     _VAR_TO_FILTER,
     HRRR_VARIABLES,
     extract_variables_to_dataset,
     hrrr_variable_search_string,
+    regrid_to_cells,
 )
 
 FIXTURE = Path(__file__).parent / "fixtures" / "tiny_hrrr.grib2"
@@ -65,3 +67,17 @@ def test_extract_variables_returns_dataset() -> None:
     # 2D Lambert grid
     assert ds["latitude"].ndim == 2
     assert ds["latitude"].shape == ds["MLCAPE"].shape
+
+
+@pytest.mark.skipif(not FIXTURE.exists(), reason="fixture missing")
+def test_regrid_to_50km_returns_dataframe_per_cell() -> None:
+    ds = extract_variables_to_dataset(FIXTURE)
+    grid = build_grid()
+    df = regrid_to_cells(ds, grid)
+    assert len(df) == grid.n_cells
+    assert "MLCAPE_max" in df.columns
+    assert "MLCAPE_mean" in df.columns
+    assert "MXUPHL_2_5km_max" in df.columns
+    assert "MXUPHL_2_5km_mean" not in df.columns
+    assert df["cell_id"].tolist() == list(grid.cell_ids)
+    assert df["MLCAPE_max"].notna().sum() > 0
